@@ -211,36 +211,31 @@
               height: 90px;
             }
             .customer-fields {
-              display: grid;
-              grid-template-columns: 1fr 1fr 1fr;
-              gap: 1.5rem;
+              display: block;
               margin: 1.5rem 0;
               padding: 0;
             }
             .customer-fields label {
-              display: flex;
-              flex-direction: column;
+              display: block;
+              margin-bottom: 1rem;
               font-weight: 600;
               font-size: 0.85rem;
               color: #0e4f97;
-              gap: 0.4rem;
             }
             .customer-fields span {
               font-size: 0.8rem;
               font-weight: 600;
               color: #0e4f97;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
+              display: block;
+              margin-bottom: 0.25rem;
             }
             .customer-fields input {
-              border: none;
-              border-bottom: 1.5px solid #bdd2ee;
-              padding: 0.5rem 0;
-              background: transparent;
-              font: inherit;
-              color: #0b2a5b;
+              display: none;
+            }
+            .customer-value {
               font-size: 0.95rem;
-              font-weight: 500;
+              color: #0b2a5b;
+              font-weight: normal;
             }
             .editor-toolbar {
               display: none;
@@ -311,16 +306,16 @@
 
             <section class="customer-fields">
               <label>
-                <span>Customer Name</span>
-                <input type="text" value="${customerName}" readonly>
+                <span>Customer Name:</span>
+                <div class="customer-value">${customerName}</div>
               </label>
               <label>
-                <span>Address</span>
-                <input type="text" value="${customerAddress || ''}" readonly>
+                <span>Address:</span>
+                <div class="customer-value">${customerAddress || '(Not provided)'}</div>
               </label>
               <label>
-                <span>Email Address</span>
-                <input type="text" value="${customerEmail}" readonly>
+                <span>Email Address:</span>
+                <div class="customer-value">${customerEmail}</div>
               </label>
             </section>
 
