@@ -142,8 +142,9 @@
     }
 
     try {
-      // Get the sheet HTML and create a complete email
+      // Get the sheet HTML and create a complete email that looks like the printed page
       const sheet = document.querySelector('.sheet');
+      
       let fullHTML = `
         <!DOCTYPE html>
         <html>
@@ -160,29 +161,30 @@
               font-family: 'Syne', system-ui, -apple-system, sans-serif;
               background: white;
               color: #0b2a5b;
-              line-height: 1.6;
             }
-            .email-container {
+            .sheet {
               max-width: 8.5in;
               margin: 0;
               padding: 0.5in;
               background: white;
             }
             .sheet-header {
-              text-align: center;
-              margin-bottom: 2rem;
-              padding-bottom: 1.5rem;
-              border-bottom: 2px solid #0e4f97;
-            }
-            .header-content {
               display: flex;
               justify-content: space-between;
-              align-items: center;
+              align-items: flex-start;
+              margin-bottom: 1rem;
+              padding-bottom: 0.8rem;
+              border-bottom: 2px solid #0e4f97;
               gap: 1rem;
             }
+            .header-logo-link {
+              display: inline-block;
+              flex-shrink: 0;
+            }
             .header-logo {
-              width: 100px;
+              width: 90px;
               height: auto;
+              display: block;
             }
             .header-center {
               flex: 1;
@@ -191,117 +193,139 @@
             .header-phone {
               width: 180px;
               height: auto;
+              display: block;
             }
             .header-qr {
               text-align: center;
-              font-size: 0.75rem;
+              flex-shrink: 0;
             }
             .header-qr-label {
+              font-size: 0.75rem;
               font-weight: 600;
-              color: #385f92;
-              margin-bottom: 0.25rem;
-            }
-            .header-qr-img {
-              width: 80px;
-              height: 80px;
-            }
-            .customer-info {
-              margin: 1.5rem 0;
-              padding: 1rem;
-              background: #f9f9f9;
-              border-left: 4px solid #0e4f97;
-              text-align: left;
-            }
-            .customer-field {
-              display: block;
-              margin-bottom: 0.75rem;
-            }
-            .customer-label {
-              font-weight: 600;
-              font-size: 0.9rem;
-              color: #0e4f97;
-              display: block;
+              color: #0b2a5b;
               margin-bottom: 0.2rem;
             }
-            .customer-value {
-              font-size: 0.95rem;
+            .header-qr-img {
+              width: 70px;
+              height: 70px;
+            }
+            .customer-fields {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 1rem;
+              margin: 1rem 0;
+              padding: 0;
+            }
+            .customer-fields label {
+              display: flex;
+              flex-direction: column;
+              font-weight: 600;
+              font-size: 0.85rem;
+              color: #0e4f97;
+              gap: 0.2rem;
+            }
+            .customer-fields span {
+              font-size: 0.75rem;
+              font-weight: 600;
+              color: #0e4f97;
+            }
+            .customer-fields input {
+              border: none;
+              border-bottom: 1px solid #bdd2ee;
+              padding: 0.3rem 0;
+              background: transparent;
+              font: inherit;
               color: #0b2a5b;
-              padding-left: 0.5rem;
+              font-size: 0.9rem;
+            }
+            .editor-toolbar {
+              display: none;
             }
             .letter-body {
-              padding: 1.5rem 0;
-              margin: 2rem 0;
-              line-height: 1.7;
-              text-align: left;
+              min-height: 3in;
+              border: 1px solid #bdd2ee;
+              border-radius: 4px;
+              padding: 0.8rem;
+              background: #fff;
+              line-height: 1.5;
+              margin: 1rem 0;
               white-space: pre-wrap;
               word-wrap: break-word;
+              font-size: 0.95rem;
             }
             .letter-body h2 {
-              font-size: 1.1rem;
-              margin: 0.7rem 0 0.3rem;
+              font-size: 1rem;
+              margin: 0.5rem 0 0.25rem;
               color: #0e4f97;
             }
             .letter-body h3 {
-              font-size: 0.98rem;
-              margin: 0.6rem 0 0.25rem;
+              font-size: 0.9rem;
+              margin: 0.4rem 0 0.2rem;
               color: #385f92;
             }
             .letter-body p {
-              margin: 0 0 0.5rem;
+              margin: 0 0 0.4rem;
             }
             .letter-body ul, .letter-body ol {
-              margin: 0.5rem 0 0.5rem 1.5rem;
+              margin: 0.4rem 0 0.4rem 1.2rem;
             }
             .letter-body li {
-              margin-bottom: 0.25rem;
+              margin-bottom: 0.2rem;
             }
             .sheet-footer {
-              margin-top: 2rem;
-              padding-top: 1.5rem;
+              margin-top: 1rem;
+              padding-top: 0.6rem;
               border-top: 1px solid #bdd2ee;
               text-align: center;
+            }
+            .sheet-footer p {
+              margin: 0;
               font-size: 0.7rem;
               color: #385f92;
-              line-height: 1.4;
+              line-height: 1.3;
             }
           </style>
         </head>
         <body>
-          <div class="email-container">
-            <div class="sheet-header">
-              <div class="header-content">
-                <img class="header-logo" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/LogoAlone.png" alt="North Texas Elite Pool Care Logo">
-                <div class="header-center">
+          <div class="sheet">
+            <header class="sheet-header">
+              <a class="header-logo-link">
+                <img class="header-logo" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/LogoAlone.png" alt="North Texas Elite Pool Care logo">
+              </a>
+              <div class="header-center">
+                <a class="header-logo-link">
                   <img class="header-phone" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/PhoneNumber.png" alt="940-808-POOL">
-                </div>
-                <div class="header-qr">
-                  <div class="header-qr-label">Visit Us Online</div>
-                  <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR Code">
-                </div>
+                </a>
               </div>
-            </div>
-            
-            <div class="customer-info">
-              <div class="customer-field">
-                <span class="customer-label">Customer Name:</span>
-                <span class="customer-value">${customerName}</span>
+              <div class="header-qr">
+                <span class="header-qr-label">Visit Us Online</span>
+                <a class="header-logo-link">
+                  <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR code">
+                </a>
               </div>
-              <div class="customer-field">
-                <span class="customer-label">Address:</span>
-                <span class="customer-value">${customerAddress || '(Not provided)'}</span>
-              </div>
-              <div class="customer-field">
-                <span class="customer-label">Email Address:</span>
-                <span class="customer-value">${customerEmail}</span>
-              </div>
-            </div>
-            
+            </header>
+
+            <section class="customer-fields">
+              <label>
+                <span>Customer Name</span>
+                <input type="text" value="${customerName}" readonly>
+              </label>
+              <label>
+                <span>Address</span>
+                <input type="text" value="${customerAddress || ''}" readonly>
+              </label>
+              <label>
+                <span>Email Address</span>
+                <input type="text" value="${customerEmail}" readonly>
+              </label>
+            </section>
+
             <div class="letter-body">${letterContent}</div>
-            
-            <div class="sheet-footer">
+
+            <footer class="sheet-footer">
               <p>© 2026 North Texas Elite Pool Care LLC. All rights reserved.</p>
               <p>Serving Denton County and Surrounding Areas | Professional Pool Maintenance & Care</p>
-            </div>
+            </footer>
           </div>
         </body>
         </html>
