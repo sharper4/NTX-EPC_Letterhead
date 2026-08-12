@@ -57,6 +57,14 @@
     document.execCommand('insertText', false, text);
   });
 
+  // ========== Build Number / Version ==========
+  const buildNumber = document.getElementById('build-number');
+  if (buildNumber) {
+    const buildDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const buildTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    buildNumber.textContent = `${buildDate} ${buildTime}`;
+  }
+
   // ========== Gmail Integration ==========
   
   /**
