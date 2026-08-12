@@ -10,6 +10,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <div class="page-toolbar no-print">
@@ -17,6 +18,8 @@
         Customer
       </button>
       <button id="print-page" type="button" class="action-btn">Print</button>
+      <button id="send-email" type="button" class="action-btn" style="background-color: #0ea5e9;">Send via Gmail</button>
+      <div id="google-signin" style="display: none;"></div>
     </div>
 
     <article class="sheet">
