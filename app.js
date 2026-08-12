@@ -10,6 +10,7 @@
   let tokenClient;
   let accessToken = null;
   let pendingSendEmailAddress = null;
+  let pendingHasCustomerInfo = null;
 
   // ========== DOM Elements ==========
   const toggleBtn = document.getElementById('toggle-customer');
@@ -209,13 +210,29 @@
   }
 
   /**
+   * Whether the customer name/address/email fields have actual values,
+   * checked before any send-to prompt can populate the email field.
+   */
+  function computeHasCustomerInfo() {
+    const name = document.getElementById('customer-name').value.trim();
+    const address = document.getElementById('customer-address').value.trim();
+    const email = document.getElementById('customer-email').value.trim();
+    return Boolean(name || address || email);
+  }
+
+  /**
    * Resolve the recipient, request Gmail authorization if needed, then send.
    */
   async function sendEmailFlow() {
+    if (pendingHasCustomerInfo === null) {
+      pendingHasCustomerInfo = computeHasCustomerInfo();
+    }
+
     const customerEmail = pendingSendEmailAddress || await resolveCustomerEmailAddress();
 
     if (!customerEmail) {
       pendingSendEmailAddress = null;
+      pendingHasCustomerInfo = null;
       return;
     }
     pendingSendEmailAddress = customerEmail;
@@ -226,31 +243,40 @@
       } else {
         alert('Google authentication not ready. Please refresh the page.');
         pendingSendEmailAddress = null;
+        pendingHasCustomerInfo = null;
       }
       return;
     }
 
-    await sendEmail(customerEmail);
+    await sendEmail(customerEmail, pendingHasCustomerInfo);
   }
 
   /**
    * Send email via Gmail API
    */
-  async function sendEmail(customerEmail) {
+  async function sendEmail(customerEmail, hasCustomerInfo) {
     customerEmail = customerEmail || document.getElementById('customer-email').value;
     const letterContent = editor.innerHTML;
-    const customerName = document.getElementById('customer-name').value || 'Valued Customer';
-    const customerAddress = document.getElementById('customer-address').value;
+    if (typeof hasCustomerInfo !== 'boolean') {
+      hasCustomerInfo = computeHasCustomerInfo();
+    }
+    const customerNameRaw = document.getElementById('customer-name').value.trim();
+    const customerAddressRaw = document.getElementById('customer-address').value.trim();
+    const customerEmailRaw = document.getElementById('customer-email').value.trim();
+    const customerName = customerNameRaw || 'Valued Customer';
+    const customerAddress = customerAddressRaw;
 
     if (!customerEmail) {
       alert('Please enter a customer email address.');
       pendingSendEmailAddress = null;
+      pendingHasCustomerInfo = null;
       return;
     }
 
     if (!letterContent.trim()) {
       alert('Please write a letter before sending.');
       pendingSendEmailAddress = null;
+      pendingHasCustomerInfo = null;
       return;
     }
 
@@ -416,6 +442,7 @@
               </div>
             </header>
 
+            ${hasCustomerInfo ? `
             <section class="customer-fields">
               <label>
                 <span>Customer Name:</span>
@@ -427,9 +454,9 @@
               </label>
               <label>
                 <span>Email Address:</span>
-                <div class="customer-value">${customerEmail}</div>
+                <div class="customer-value">${customerEmailRaw || customerEmail}</div>
               </label>
-            </section>
+            </section>` : ''}
 
             <div class="letter-body">${letterContent}</div>
 
@@ -474,6 +501,7 @@
       alert('Failed to send email: ' + error.message);
     } finally {
       pendingSendEmailAddress = null;
+      pendingHasCustomerInfo = null;
     }
   }
 
