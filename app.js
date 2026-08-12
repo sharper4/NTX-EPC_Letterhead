@@ -61,14 +61,24 @@
   // ========== Build Number / Version ==========
   function initBuildNumber() {
     const buildNumber = document.getElementById('build-number');
-    if (buildNumber) {
-      const buildDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const buildTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-      buildNumber.textContent = `${buildDate} ${buildTime}`;
-      console.log('Build number updated:', buildNumber.textContent);
-    } else {
+    if (!buildNumber) {
       console.warn('Build number element not found');
+      return;
     }
+
+    const modified = new Date(document.lastModified);
+    if (Number.isNaN(modified.getTime())) {
+      buildNumber.textContent = 'live';
+      return;
+    }
+
+    const year = modified.getFullYear();
+    const month = String(modified.getMonth() + 1).padStart(2, '0');
+    const day = String(modified.getDate()).padStart(2, '0');
+    const hour = String(modified.getHours()).padStart(2, '0');
+    const minute = String(modified.getMinutes()).padStart(2, '0');
+    buildNumber.textContent = `${year}.${month}.${day}.${hour}${minute}`;
+    console.log('Build number updated:', buildNumber.textContent);
   }
 
   // ========== Gmail Integration ==========
