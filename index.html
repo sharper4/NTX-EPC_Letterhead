@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NTX - Open Letterhead</title>
+    <link rel="icon" href="./assets/favicon.svg" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-toolbar no-print">
+      <button id="toggle-customer" type="button" class="action-btn" aria-expanded="false" aria-controls="customer-fields">
+        Customer
+      </button>
+      <button id="print-page" type="button" class="action-btn">Print</button>
+    </div>
+
+    <article class="sheet">
+      <header class="sheet-header">
+        <a class="header-logo-link" href="https://sharper4.github.io/NTXElitePoolCare/" aria-label="North Texas Elite Pool Care home">
+          <img class="header-logo" src="./assets/LogoAlone.png" alt="North Texas Elite Pool Care logo" />
+        </a>
+
+        <div class="header-center">
+          <a class="header-logo-link" href="https://sharper4.github.io/NTXElitePoolCare/" aria-label="Call 940-808-POOL - North Texas Elite Pool Care home">
+            <img class="header-phone" src="./assets/PhoneNumber.png" alt="940-808-POOL" />
+          </a>
+        </div>
+
+        <div class="header-qr">
+          <span class="header-qr-label">Visit Us Online</span>
+          <a href="https://sharper4.github.io/NTXElitePoolCare/" aria-label="Visit North Texas Elite Pool Care online">
+            <img class="header-qr-img" src="./assets/qr-website.svg" alt="QR code to North Texas Elite Pool Care website" />
+          </a>
+        </div>
+      </header>
+
+      <section id="customer-fields" class="customer-fields" hidden>
+        <label>
+          <span>Customer Name</span>
+          <input id="customer-name" type="text" autocomplete="off" />
+        </label>
+        <label>
+          <span>Address</span>
+          <input id="customer-address" type="text" autocomplete="off" />
+        </label>
+        <label>
+          <span>Email Address</span>
+          <input id="customer-email" type="email" autocomplete="off" />
+        </label>
+      </section>
+
+      <div class="editor-toolbar no-print" role="toolbar" aria-label="Text formatting">
+        <button type="button" data-command="bold" title="Bold"><strong>B</strong></button>
+        <button type="button" data-command="italic" title="Italic"><em>I</em></button>
+        <button type="button" data-command="underline" title="Underline"><u>U</u></button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button type="button" data-command="insertUnorderedList" title="Bulleted list">&bull; List</button>
+        <button type="button" data-command="insertOrderedList" title="Numbered list">1. List</button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button type="button" data-command="formatBlock" data-value="h2" title="Heading">H2</button>
+        <button type="button" data-command="formatBlock" data-value="h3" title="Subheading">H3</button>
+        <button type="button" data-command="formatBlock" data-value="p" title="Normal text">Text</button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button type="button" data-command="removeFormat" title="Clear formatting">Clear</button>
+      </div>
+
+      <div
+        id="letter-body"
+        class="letter-body"
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Letter body"
+        data-placeholder="Start typing here..."
+      ></div>
+
+      <footer class="sheet-footer">
+        <p>&copy; 2026 North Texas Elite Pool Care LLC. All rights reserved.</p>
+        <p>Serving Denton County and Surrounding Areas | Professional Pool Maintenance &amp; Care</p>
+      </footer>
+    </article>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
