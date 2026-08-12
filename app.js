@@ -297,11 +297,8 @@
       const emailHeaders = `To: ${customerEmail}\r\nSubject: ${emailSubject}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n`;
       const emailBody = emailHeaders + fullHTML;
 
-      // Base64 encode the message (RFC 4648 safe alphabet)
-      const encodedMessage = btoa(unescape(encodeURIComponent(emailBody)))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+      // Base64 encode the message (standard base64, not URL-safe)
+      const encodedMessage = btoa(unescape(encodeURIComponent(emailBody)));
 
       const response = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
