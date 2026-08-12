@@ -151,87 +151,88 @@
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
             body {
               font-family: 'Syne', system-ui, -apple-system, sans-serif;
-              margin: 0;
-              padding: 2rem;
-              background: #f5f5f5;
+              background: white;
               color: #0b2a5b;
+              line-height: 1.6;
             }
             .email-container {
               max-width: 8.5in;
-              margin: 0 auto;
-              background: white;
+              margin: 0;
               padding: 0.5in;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              background: white;
             }
             .sheet-header {
+              text-align: center;
+              margin-bottom: 2rem;
+              padding-bottom: 1.5rem;
+              border-bottom: 2px solid #0e4f97;
+            }
+            .header-content {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              margin-bottom: 1.5rem;
-              padding-bottom: 1rem;
-              border-bottom: 2px solid #0e4f97;
+              gap: 1rem;
             }
             .header-logo {
-              max-width: 120px;
+              width: 100px;
               height: auto;
             }
             .header-center {
-              text-align: center;
               flex: 1;
+              text-align: center;
             }
             .header-phone {
-              max-width: 200px;
+              width: 180px;
               height: auto;
             }
             .header-qr {
               text-align: center;
+              font-size: 0.75rem;
             }
             .header-qr-label {
-              font-size: 0.8rem;
               font-weight: 600;
-              display: block;
-              margin-bottom: 0.3rem;
               color: #385f92;
+              margin-bottom: 0.25rem;
             }
             .header-qr-img {
-              max-width: 100px;
-              height: auto;
+              width: 80px;
+              height: 80px;
             }
-            .customer-fields {
-              display: grid;
-              grid-template-columns: 1fr 1fr 1fr;
-              gap: 1rem;
+            .customer-info {
               margin: 1.5rem 0;
               padding: 1rem;
               background: #f9f9f9;
-              border-radius: 6px;
+              border-left: 4px solid #0e4f97;
+              text-align: left;
             }
-            .customer-fields label {
-              display: flex;
-              flex-direction: column;
+            .customer-field {
+              display: block;
+              margin-bottom: 0.75rem;
+            }
+            .customer-label {
               font-weight: 600;
               font-size: 0.9rem;
               color: #0e4f97;
+              display: block;
+              margin-bottom: 0.2rem;
             }
-            .customer-fields span {
-              font-size: 0.85rem;
-              margin-bottom: 0.3rem;
-            }
-            .customer-fields input {
-              border: none;
-              border-bottom: 1px solid #bdd2ee;
-              padding: 0.4rem 0;
-              background: transparent;
-              font: inherit;
+            .customer-value {
+              font-size: 0.95rem;
               color: #0b2a5b;
+              padding-left: 0.5rem;
             }
             .letter-body {
-              min-height: 6.5in;
-              padding: 1rem;
-              margin: 1.5rem 0;
-              line-height: 1.6;
+              padding: 1.5rem 0;
+              margin: 2rem 0;
+              line-height: 1.7;
+              text-align: left;
               white-space: pre-wrap;
               word-wrap: break-word;
             }
@@ -249,36 +250,50 @@
               margin: 0 0 0.5rem;
             }
             .letter-body ul, .letter-body ol {
-              margin: 0.5rem 0;
-              padding-left: 1.5rem;
+              margin: 0.5rem 0 0.5rem 1.5rem;
+            }
+            .letter-body li {
+              margin-bottom: 0.25rem;
             }
             .sheet-footer {
               margin-top: 2rem;
-              padding-top: 1rem;
+              padding-top: 1.5rem;
               border-top: 1px solid #bdd2ee;
               text-align: center;
-              font-size: 0.75rem;
+              font-size: 0.7rem;
               color: #385f92;
+              line-height: 1.4;
             }
           </style>
         </head>
         <body>
           <div class="email-container">
             <div class="sheet-header">
-              <img class="header-logo" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/LogoAlone.png" alt="Logo">
-              <div class="header-center">
-                <img class="header-phone" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/PhoneNumber.png" alt="940-808-POOL">
-              </div>
-              <div class="header-qr">
-                <span class="header-qr-label">Visit Us Online</span>
-                <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR Code">
+              <div class="header-content">
+                <img class="header-logo" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/LogoAlone.png" alt="North Texas Elite Pool Care Logo">
+                <div class="header-center">
+                  <img class="header-phone" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/PhoneNumber.png" alt="940-808-POOL">
+                </div>
+                <div class="header-qr">
+                  <div class="header-qr-label">Visit Us Online</div>
+                  <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR Code">
+                </div>
               </div>
             </div>
             
-            <div class="customer-fields">
-              <label><span>Customer Name</span>${customerName}</label>
-              <label><span>Address</span>${customerAddress || '(Not provided)'}</label>
-              <label><span>Email Address</span>${customerEmail}</label>
+            <div class="customer-info">
+              <div class="customer-field">
+                <span class="customer-label">Customer Name:</span>
+                <span class="customer-value">${customerName}</span>
+              </div>
+              <div class="customer-field">
+                <span class="customer-label">Address:</span>
+                <span class="customer-value">${customerAddress || '(Not provided)'}</span>
+              </div>
+              <div class="customer-field">
+                <span class="customer-label">Email Address:</span>
+                <span class="customer-value">${customerEmail}</span>
+              </div>
             </div>
             
             <div class="letter-body">${letterContent}</div>
