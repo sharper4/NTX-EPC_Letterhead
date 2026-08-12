@@ -165,33 +165,34 @@
             .sheet {
               max-width: 8.5in;
               margin: 0;
-              padding: 0.5in;
+              padding: 0.75in;
               background: white;
             }
             .sheet-header {
               display: flex;
               justify-content: space-between;
               align-items: flex-start;
-              margin-bottom: 1rem;
-              padding-bottom: 0.8rem;
+              margin-bottom: 1.5rem;
+              padding-bottom: 1.2rem;
               border-bottom: 2px solid #0e4f97;
-              gap: 1rem;
+              gap: 1.5rem;
             }
             .header-logo-link {
               display: inline-block;
               flex-shrink: 0;
             }
             .header-logo {
-              width: 90px;
+              width: 120px;
               height: auto;
               display: block;
             }
             .header-center {
               flex: 1;
               text-align: center;
+              padding: 0 1rem;
             }
             .header-phone {
-              width: 180px;
+              width: 220px;
               height: auto;
               display: block;
             }
@@ -200,20 +201,20 @@
               flex-shrink: 0;
             }
             .header-qr-label {
-              font-size: 0.75rem;
+              font-size: 0.8rem;
               font-weight: 600;
               color: #0b2a5b;
-              margin-bottom: 0.2rem;
+              margin-bottom: 0.3rem;
             }
             .header-qr-img {
-              width: 70px;
-              height: 70px;
+              width: 90px;
+              height: 90px;
             }
             .customer-fields {
               display: grid;
               grid-template-columns: 1fr 1fr 1fr;
-              gap: 1rem;
-              margin: 1rem 0;
+              gap: 1.5rem;
+              margin: 1.5rem 0;
               padding: 0;
             }
             .customer-fields label {
@@ -222,21 +223,24 @@
               font-weight: 600;
               font-size: 0.85rem;
               color: #0e4f97;
-              gap: 0.2rem;
+              gap: 0.4rem;
             }
             .customer-fields span {
-              font-size: 0.75rem;
+              font-size: 0.8rem;
               font-weight: 600;
               color: #0e4f97;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
             }
             .customer-fields input {
               border: none;
-              border-bottom: 1px solid #bdd2ee;
-              padding: 0.3rem 0;
+              border-bottom: 1.5px solid #bdd2ee;
+              padding: 0.5rem 0;
               background: transparent;
               font: inherit;
               color: #0b2a5b;
-              font-size: 0.9rem;
+              font-size: 0.95rem;
+              font-weight: 500;
             }
             .editor-toolbar {
               display: none;
@@ -245,44 +249,44 @@
               min-height: 3in;
               border: 1px solid #bdd2ee;
               border-radius: 4px;
-              padding: 0.8rem;
+              padding: 1rem;
               background: #fff;
-              line-height: 1.5;
-              margin: 1rem 0;
+              line-height: 1.6;
+              margin: 1.5rem 0;
               white-space: pre-wrap;
               word-wrap: break-word;
               font-size: 0.95rem;
             }
             .letter-body h2 {
               font-size: 1rem;
-              margin: 0.5rem 0 0.25rem;
+              margin: 0.7rem 0 0.3rem;
               color: #0e4f97;
             }
             .letter-body h3 {
               font-size: 0.9rem;
-              margin: 0.4rem 0 0.2rem;
+              margin: 0.5rem 0 0.2rem;
               color: #385f92;
             }
             .letter-body p {
-              margin: 0 0 0.4rem;
+              margin: 0 0 0.5rem;
             }
             .letter-body ul, .letter-body ol {
-              margin: 0.4rem 0 0.4rem 1.2rem;
+              margin: 0.5rem 0 0.5rem 1.3rem;
             }
             .letter-body li {
-              margin-bottom: 0.2rem;
+              margin-bottom: 0.3rem;
             }
             .sheet-footer {
-              margin-top: 1rem;
-              padding-top: 0.6rem;
+              margin-top: 1.5rem;
+              padding-top: 1rem;
               border-top: 1px solid #bdd2ee;
               text-align: center;
             }
             .sheet-footer p {
-              margin: 0;
+              margin: 0.3rem 0;
               font-size: 0.7rem;
               color: #385f92;
-              line-height: 1.3;
+              line-height: 1.4;
             }
           </style>
         </head>
