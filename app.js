@@ -123,6 +123,8 @@
   async function sendEmail() {
     const customerEmail = document.getElementById('customer-email').value;
     const letterContent = editor.innerHTML;
+    const customerName = document.getElementById('customer-name').value || 'Valued Customer';
+    const customerAddress = document.getElementById('customer-address').value;
 
     if (!customerEmail) {
       alert('Please enter a customer email address.');
@@ -140,10 +142,160 @@
     }
 
     try {
+      // Get the sheet HTML and create a complete email
+      const sheet = document.querySelector('.sheet');
+      let fullHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body {
+              font-family: 'Syne', system-ui, -apple-system, sans-serif;
+              margin: 0;
+              padding: 2rem;
+              background: #f5f5f5;
+              color: #0b2a5b;
+            }
+            .email-container {
+              max-width: 8.5in;
+              margin: 0 auto;
+              background: white;
+              padding: 0.5in;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .sheet-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 1.5rem;
+              padding-bottom: 1rem;
+              border-bottom: 2px solid #0e4f97;
+            }
+            .header-logo {
+              max-width: 120px;
+              height: auto;
+            }
+            .header-center {
+              text-align: center;
+              flex: 1;
+            }
+            .header-phone {
+              max-width: 200px;
+              height: auto;
+            }
+            .header-qr {
+              text-align: center;
+            }
+            .header-qr-label {
+              font-size: 0.8rem;
+              font-weight: 600;
+              display: block;
+              margin-bottom: 0.3rem;
+              color: #385f92;
+            }
+            .header-qr-img {
+              max-width: 100px;
+              height: auto;
+            }
+            .customer-fields {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 1rem;
+              margin: 1.5rem 0;
+              padding: 1rem;
+              background: #f9f9f9;
+              border-radius: 6px;
+            }
+            .customer-fields label {
+              display: flex;
+              flex-direction: column;
+              font-weight: 600;
+              font-size: 0.9rem;
+              color: #0e4f97;
+            }
+            .customer-fields span {
+              font-size: 0.85rem;
+              margin-bottom: 0.3rem;
+            }
+            .customer-fields input {
+              border: none;
+              border-bottom: 1px solid #bdd2ee;
+              padding: 0.4rem 0;
+              background: transparent;
+              font: inherit;
+              color: #0b2a5b;
+            }
+            .letter-body {
+              min-height: 6.5in;
+              padding: 1rem;
+              margin: 1.5rem 0;
+              line-height: 1.6;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            }
+            .letter-body h2 {
+              font-size: 1.1rem;
+              margin: 0.7rem 0 0.3rem;
+              color: #0e4f97;
+            }
+            .letter-body h3 {
+              font-size: 0.98rem;
+              margin: 0.6rem 0 0.25rem;
+              color: #385f92;
+            }
+            .letter-body p {
+              margin: 0 0 0.5rem;
+            }
+            .letter-body ul, .letter-body ol {
+              margin: 0.5rem 0;
+              padding-left: 1.5rem;
+            }
+            .sheet-footer {
+              margin-top: 2rem;
+              padding-top: 1rem;
+              border-top: 1px solid #bdd2ee;
+              text-align: center;
+              font-size: 0.75rem;
+              color: #385f92;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="sheet-header">
+              <img class="header-logo" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/LogoAlone.png" alt="Logo">
+              <div class="header-center">
+                <img class="header-phone" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/PhoneNumber.png" alt="940-808-POOL">
+              </div>
+              <div class="header-qr">
+                <span class="header-qr-label">Visit Us Online</span>
+                <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR Code">
+              </div>
+            </div>
+            
+            <div class="customer-fields">
+              <label><span>Customer Name</span>${customerName}</label>
+              <label><span>Address</span>${customerAddress || '(Not provided)'}</label>
+              <label><span>Email Address</span>${customerEmail}</label>
+            </div>
+            
+            <div class="letter-body">${letterContent}</div>
+            
+            <div class="sheet-footer">
+              <p>© 2026 North Texas Elite Pool Care LLC. All rights reserved.</p>
+              <p>Serving Denton County and Surrounding Areas | Professional Pool Maintenance & Care</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
       // Create email message
       const emailSubject = 'Message from North Texas Elite Pool Care';
       const emailHeaders = `To: ${customerEmail}\r\nSubject: ${emailSubject}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n`;
-      const emailBody = emailHeaders + letterContent;
+      const emailBody = emailHeaders + fullHTML;
 
       // Base64 encode the message (RFC 4648 safe alphabet)
       const encodedMessage = btoa(unescape(encodeURIComponent(emailBody)))
