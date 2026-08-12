@@ -60,15 +60,15 @@
 
   // ========== Build Number / Version ==========
   function initBuildNumber() {
-    const buildNumber = document.getElementById('build-number');
-    if (!buildNumber) {
-      console.warn('Build number element not found');
+    const badge = document.getElementById('build-badge');
+    if (!badge) {
+      console.warn('Build badge element not found');
       return;
     }
 
     const modified = new Date(document.lastModified);
     if (Number.isNaN(modified.getTime())) {
-      buildNumber.textContent = 'live';
+      badge.textContent = 'Build live';
       return;
     }
 
@@ -77,8 +77,8 @@
     const day = String(modified.getDate()).padStart(2, '0');
     const hour = String(modified.getHours()).padStart(2, '0');
     const minute = String(modified.getMinutes()).padStart(2, '0');
-    buildNumber.textContent = `${year}.${month}.${day}.${hour}${minute}`;
-    console.log('Build number updated:', buildNumber.textContent);
+    badge.textContent = `Build ${year}.${month}.${day}.${hour}${minute}`;
+    console.log('Build number updated:', badge.textContent);
   }
 
   // ========== Gmail Integration ==========

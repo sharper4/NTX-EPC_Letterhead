@@ -53,6 +53,23 @@ body {
   color: var(--brand);
 }
 
+.build-badge {
+  position: fixed;
+  right: 0.85rem;
+  bottom: 0.8rem;
+  z-index: 20;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--muted);
+  padding: 0.18rem 0.55rem;
+  font-family: "Space Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  box-shadow: 0 8px 18px rgba(11, 42, 91, 0.08);
+  backdrop-filter: blur(8px);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -350,6 +367,10 @@ body {
     border-bottom: 1px solid var(--line);
     border-radius: 0;
     padding-left: 0;
+  }
+
+  .build-badge {
+    display: none;
   }
 }
 
