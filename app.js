@@ -2,7 +2,7 @@
   'use strict';
 
   // ========== Gmail API Configuration ==========
-  const CLIENT_ID = '401370888475-qfvapnj1nir1tn9sq41q7qqQt34fa5vg.apps.googleusercontent.com';
+  const CLIENT_ID = '401370888475-3mo4smpbf7r0l39gmk776d2g1vird0eu.apps.googleusercontent.com';
   const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
   
   let gapiLoaded = false;
