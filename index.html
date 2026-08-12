@@ -89,6 +89,20 @@
       </footer>
     </article>
 
+    <div class="modal-overlay" id="email-modal-overlay" hidden>
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="email-modal-title">
+        <h3 id="email-modal-title">Send via Gmail</h3>
+        <p class="modal-sub">Enter the email address you'd like to send this letter to.</p>
+        <label>Email Address
+          <input id="email-modal-input" type="email" placeholder="you@example.com" />
+        </label>
+        <div class="modal-actions">
+          <button id="email-modal-cancel" type="button" class="action-btn" style="background: #fff; color: var(--brand);">Cancel</button>
+          <button id="email-modal-confirm" type="button" class="action-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
     <script src="./app.js"></script>
   </body>
 </html>

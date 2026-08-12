@@ -9,6 +9,7 @@
   let gisLoaded = false;
   let tokenClient;
   let accessToken = null;
+  let pendingSendEmailAddress = null;
 
   // ========== DOM Elements ==========
   const toggleBtn = document.getElementById('toggle-customer');
@@ -94,7 +95,7 @@
           }
           accessToken = tokenResponse.access_token;
           console.log('Access token obtained');
-          sendEmail();
+          sendEmailFlow();
         },
       });
       gisLoaded = true;
@@ -118,21 +119,128 @@
   }
 
   /**
+   * Show a custom modal prompting for an email address, falling back to
+   * window.prompt if the modal markup isn't present for some reason.
+   */
+  function promptForEmailAddress(defaultValue) {
+    return new Promise((resolve) => {
+      const overlay = document.getElementById('email-modal-overlay');
+      const input = document.getElementById('email-modal-input');
+      const confirmBtn = document.getElementById('email-modal-confirm');
+      const cancelBtn = document.getElementById('email-modal-cancel');
+
+      if (!overlay || !input || !confirmBtn || !cancelBtn) {
+        resolve(window.prompt('Enter the email address to send this letter to:', defaultValue || '') || '');
+        return;
+      }
+
+      input.value = defaultValue || '';
+      overlay.hidden = false;
+      input.focus();
+      input.select();
+
+      function cleanup(result) {
+        overlay.hidden = true;
+        confirmBtn.removeEventListener('click', onConfirm);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlayClick);
+        input.removeEventListener('keydown', onKeydown);
+        resolve(result);
+      }
+
+      function onConfirm() {
+        cleanup(input.value.trim());
+      }
+
+      function onCancel() {
+        cleanup('');
+      }
+
+      function onOverlayClick(event) {
+        if (event.target === overlay) cleanup('');
+      }
+
+      function onKeydown(event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onConfirm();
+        } else if (event.key === 'Escape') {
+          onCancel();
+        }
+      }
+
+      confirmBtn.addEventListener('click', onConfirm);
+      cancelBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      input.addEventListener('keydown', onKeydown);
+    });
+  }
+
+  /**
+   * Resolve the email address to send to, prompting via a modal when the
+   * customer section is collapsed or no email has been entered yet.
+   */
+  async function resolveCustomerEmailAddress() {
+    const emailInput = document.getElementById('customer-email');
+    const currentEmail = (emailInput.value || '').trim();
+    const shouldPrompt = customerFields.hidden || !currentEmail;
+
+    if (!shouldPrompt) {
+      return currentEmail;
+    }
+
+    const promptValue = await promptForEmailAddress(currentEmail);
+    if (!promptValue) {
+      return '';
+    }
+
+    emailInput.value = promptValue;
+    return promptValue;
+  }
+
+  /**
+   * Resolve the recipient, request Gmail authorization if needed, then send.
+   */
+  async function sendEmailFlow() {
+    const customerEmail = pendingSendEmailAddress || await resolveCustomerEmailAddress();
+
+    if (!customerEmail) {
+      pendingSendEmailAddress = null;
+      return;
+    }
+    pendingSendEmailAddress = customerEmail;
+
+    if (!accessToken) {
+      if (gisLoaded) {
+        requestAccessToken();
+      } else {
+        alert('Google authentication not ready. Please refresh the page.');
+        pendingSendEmailAddress = null;
+      }
+      return;
+    }
+
+    await sendEmail(customerEmail);
+  }
+
+  /**
    * Send email via Gmail API
    */
-  async function sendEmail() {
-    const customerEmail = document.getElementById('customer-email').value;
+  async function sendEmail(customerEmail) {
+    customerEmail = customerEmail || document.getElementById('customer-email').value;
     const letterContent = editor.innerHTML;
     const customerName = document.getElementById('customer-name').value || 'Valued Customer';
     const customerAddress = document.getElementById('customer-address').value;
 
     if (!customerEmail) {
       alert('Please enter a customer email address.');
+      pendingSendEmailAddress = null;
       return;
     }
 
     if (!letterContent.trim()) {
       alert('Please write a letter before sending.');
+      pendingSendEmailAddress = null;
       return;
     }
 
@@ -354,6 +462,8 @@
     } catch (error) {
       console.error('Error sending email:', error);
       alert('Failed to send email: ' + error.message);
+    } finally {
+      pendingSendEmailAddress = null;
     }
   }
 
@@ -361,15 +471,7 @@
    * Send Email button click handler
    */
   sendEmailBtn.addEventListener('click', () => {
-    if (!accessToken) {
-      if (gisLoaded) {
-        requestAccessToken();
-      } else {
-        alert('Google authentication not ready. Please refresh the page.');
-      }
-    } else {
-      sendEmail();
-    }
+    sendEmailFlow();
   });
 
   // Initialize token client when page loads

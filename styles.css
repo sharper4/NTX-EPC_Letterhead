@@ -53,6 +53,65 @@ body {
   color: var(--brand);
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 42, 91, 0.45);
+  padding: 1rem;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-box {
+  width: min(380px, 100%);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+  box-shadow: 0 20px 40px rgba(11, 42, 91, 0.25);
+}
+
+.modal-box h3 {
+  margin: 0 0 0.35rem;
+  color: var(--ink);
+}
+
+.modal-sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+
+.modal-box label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.modal-box input {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .sheet {
   max-width: 8.5in;
   margin: 0 auto;
