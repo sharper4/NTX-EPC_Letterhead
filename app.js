@@ -58,11 +58,16 @@
   });
 
   // ========== Build Number / Version ==========
-  const buildNumber = document.getElementById('build-number');
-  if (buildNumber) {
-    const buildDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const buildTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    buildNumber.textContent = `${buildDate} ${buildTime}`;
+  function initBuildNumber() {
+    const buildNumber = document.getElementById('build-number');
+    if (buildNumber) {
+      const buildDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const buildTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      buildNumber.textContent = `${buildDate} ${buildTime}`;
+      console.log('Build number updated:', buildNumber.textContent);
+    } else {
+      console.warn('Build number element not found');
+    }
   }
 
   // ========== Gmail Integration ==========
@@ -72,7 +77,13 @@
    */
   function initializeTokenClient() {
     try {
-      tokenClient = google.accounts.oauth2.initTokenClient({
+      if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+        console.error('Google library not loaded yet');
+        setTimeout(initializeTokenClient, 500);
+        return;
+      }
+
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES.join(' '),
         callback: (tokenResponse) => {
@@ -87,9 +98,10 @@
         },
       });
       gisLoaded = true;
-      console.log('Token client initialized');
+      console.log('Token client initialized successfully');
     } catch (error) {
       console.error('Failed to initialize token client:', error);
+      setTimeout(initializeTokenClient, 500);
     }
   }
 
@@ -181,8 +193,12 @@
 
   // Initialize token client when page loads
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeTokenClient);
+    document.addEventListener('DOMContentLoaded', () => {
+      initBuildNumber();
+      initializeTokenClient();
+    });
   } else {
+    initBuildNumber();
     initializeTokenClient();
   }
 })();
