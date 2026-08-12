@@ -296,12 +296,6 @@
                   <img class="header-phone" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/PhoneNumber.png" alt="940-808-POOL">
                 </a>
               </div>
-              <div class="header-qr">
-                <span class="header-qr-label">Visit Us Online</span>
-                <a class="header-logo-link">
-                  <img class="header-qr-img" src="https://sharper4.github.io/NTX-EPC_Letterhead/assets/qr-website.svg" alt="QR code">
-                </a>
-              </div>
             </header>
 
             <section class="customer-fields">
