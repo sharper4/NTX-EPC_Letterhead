@@ -1,0 +1,965 @@
+﻿<#
+.SYNOPSIS
+    This script start the data collection interface for the Microsoft Network Performance Assessment.
+
+.DESCRIPTION
+    The Start-Datacollection.ps1 script is used to start the data collection interface for the Microsoft Network Performance Assessment.
+    It will check the necessary prerequisites before starting the interface.
+
+.PARAMETER TenantType
+    Specifies the type of tenant. Valid values are "Worldwide", "GCCH", and "DOD".
+    The default value is "Worldwide".
+    Example: -TenantType "GCCH" > This will set the script for a GCCH tenant.
+
+.PARAMETER TenantName
+    Specifies the name of the tenant to use for SPO connections.
+    By default the script will use "microsoft-my.sharepoint.com".
+    Example: -TenantName "contoso" > This will connect to the "contoso-my.sharepoint.com" SPO FQDN.
+
+.PARAMETER SetProxyConfiguration
+    Switch to start a wizard to reconfigure proxy settings on the current user.
+    Example: -SetProxyConfiguration > This will start the proxy configuration wizard.
+
+.PARAMETER SetProxyCredentials
+    Switch to explicitly enter the user credentials to use for proxy authentication (if proxy authentication is not explicitly detected).
+    Example: -SetProxyCredentials > This will prompt to enter the user credentials for proxy authentication.
+
+.EXAMPLE
+    .\Start-Datacollection.ps1 -TenantName "contoso"
+
+    This command will run the script and attempt to connect to the "contoso-my.sharepoint.com" SPO FQDN.
+
+.EXAMPLE
+    .\Start-Datacollection.ps1 -SetProxyConfiguration
+
+    This command will run the script with the default configuration and start the proxy configuration wizard.
+
+.EXAMPLE
+    .\Start-Datacollection.ps1 -TenantType "GCCH" -TenantName "contoso" -SetProxyConfiguration
+
+    This command will run the script for a GCCH tenant, start the proxy configuration wizard, and attempt to connect to the "contoso-my.sharepoint.us" SPO FQDN.
+
+#>
+param(
+     [ValidateSet("Worldwide","GCCH","DOD")]$TenantType = "Worldwide",
+     [String]$TenantName,
+     [Switch]$SetProxyConfiguration,
+     [Switch]$SetProxyCredentials,
+     [Parameter(DontShow)][Switch]$IAcceptScriptTerms,
+     [Parameter(DontShow)][Switch]$BypassPrereqChecks,
+     [Parameter(DontShow)][Switch]$BypassVersionCheck,
+     [Parameter(DontShow)][Switch]$DebugMode
+ )
+
+$ProgressPreference = "SilentlyContinue"
+Clear-Host
+
+$Version = "6.0.0"
+$BuildDate = "2025-09-08"
+$Breakflag = $false
+
+$RunningAsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($RunningAsAdmin -eq $false) {
+    Write-Warning @'
+Script is not running as an administrator
+The following tasks will not be possible:
+- Automatic installation/reinstallation of Teams NAT and Npcap if necessary
+- Capturing network traces using Netsh
+- Automatic configuration of QoS rule for Teams NAT
+- Modifying the Teams NAT config file (unless explicit permission is given on the config file)
+- Running Teams NAT over UDP in an environment without external DNS resolution (unless explicit permission is given on the config file)
+
+Restart the script as an administrator if possible
+'@
+    $UserInput = Read-Host "Type 'yes' and press enter to continue without administrator permissions"
+    if ($UserInput -notlike "yes") {
+        exit
+    }
+}
+
+$LanguageMode = $ExecutionContext.SessionState.LanguageMode
+if ($LanguageMode -ne "FullLanguage") {
+    Write-Warning @'
+Powershell is not running in 'FullLanguage' mode
+Unable to run the script
+'@
+    Write-Host "Press any key to exit"
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    exit
+}
+
+if ($PSVersionTable.PSVersion.Major -lt "5") {
+    Write-Warning @"
+The installed powershell version must be 5 or higher
+Please close Powershell and install the required prerequisites
+"@
+    Write-Host "Press any key to exit"
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    exit
+}
+
+$ScriptPath = (Split-Path -parent $MyInvocation.MyCommand.Definition)
+if ($env:NPAPath -notlike $ScriptPath) {
+    Write-Warning "Environmental variable is not set to the current path. Setting new value..."
+    try {
+        [environment]::setEnvironmentVariable("NPAPath", $ScriptPath, "User")
+        $env:NPAPath = [environment]::getEnvironmentVariable("NPAPath", "User")
+        $NPAPathVariableSet = $true
+    } catch {
+        Write-Warning @'
+NPA path environment variable is not correctly set
+Please run the command below with the correct folder path (where the script is located) and restart Powershell:
+
+[environment]::setEnvironmentVariable("NPAPath", "C:\Tools\DataCollection", "User")
+'@
+        Write-Host "Press any key to exit"
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+        exit
+    }
+}
+
+$IPv6EnabledInterfaces = (Get-NetAdapterBinding | Where-Object {$_.ComponentId -eq "ms_tcpip6" -and $_.Enabled -eq $true}).Name -join " / "
+if ($IPv6EnabledInterfaces) {
+    Write-Warning "IPv6 is enabled. Disabling the binding..."
+    try {
+        Get-NetAdapterBinding | Where-Object {$_.ComponentId -eq "ms_tcpip6" -and $_.Enabled -eq $true} | Disable-NetAdapterBinding -ErrorAction Stop
+        $IPv6Disabled = $true
+    } catch {
+        Write-Warning @'
+Unable to disable IPv6
+IPv6 is currently enabled on the following interfaces: $IPv6EnabledInterfaces
+Please run the command below to disable IPv6:
+
+Get-NetAdapterBinding | Where-Object {$_.ComponentId -eq "ms_tcpip6" -and $_.Enabled -eq $true} | Disable-NetAdapterBinding
+'@
+        Write-Host "Press any key to exit"
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+        exit
+    }
+}
+
+$BlockedFiles = Get-ChildItem $env:NPAPath -Recurse | Get-Item -Stream "Zone.Identifier" -ErrorAction SilentlyContinue
+if ($BlockedFiles) {
+    Write-Warning "Some files are blocked. Unblocking all files in the script folder..."
+    try {
+        Get-ChildItem $env:NPAPath -Recurse | Unblock-File | Out-Null
+        $FilesUnblocked = $true
+    } catch {
+        Write-Warning @'
+Unable to unblock files
+Please run the command below to unblock all files in the script folder:
+
+Get-ChildItem $env:NPAPath -Recurse | Unblock-File
+'@
+        Write-Host "Press any key to exit"
+        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+        exit
+    }
+}
+
+if (-not (Test-Path $env:NPAPath\Scripts\DataCollection.psm1)) {
+    Write-Warning @'
+Prerequisite module not found
+Make sure all files and paths are present
+'@
+    Write-Host "Press any key to exit"
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    exit
+}
+
+try {
+    Import-Module $env:NPAPath\Scripts\DataCollection.psm1 -Force -DisableNameChecking -ErrorAction Stop | Out-Null
+} catch {
+    Write-Warning @'
+Unable to load prerequisite module
+Make sure that all files are unblocked and can be run without restrictions
+'@
+    Write-Host "Press any key to exit"
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+    exit
+}
+
+Write-Log -Message "####################################################################"
+Write-Log -Message "Starting script - $(Get-Date -Format 'dd/MM/yyyy-HH:mm:ss.fff')"
+Write-Log -Message "DataCollection version '$($Version)' ($BuildDate)"
+Write-Log -Message "Script started from machine '$(hostname)' by '$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)'"
+if ($MyInvocation.InvocationName -eq "&" -and $MyInvocation.Line -notmatch '^&') {
+    Write-Log -Message "Script started via right-click"
+} else {
+    Write-Log -Message "Script started from Powershell using '$($MyInvocation.Line)'"
+}
+Write-Log -Message "####################################################################"
+
+Write-Host "########################################################################################"
+Write-Host "#                                                                                      #"
+Write-Host "#                                                                                      #"
+Write-Host "#                 MICROSOFT OFFICE 365 NETWORK PERFORMANCE ASSESSMENT                  #"
+Write-Host "#                                 DATA COLLECTION TOOL                                 #"
+Write-Host "#             Copyright© $(Get-Date -Format "yyyy") Microsoft Corporation - All Rights Reserved              #"
+Write-Host "#                                                                                      #"
+Write-Host "#                                                                                      #"
+Write-Host "#                                                                                      #"
+Write-Host '#    THIS SCRIPT AND ANY RELATED INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY     #'
+Write-Host "#     OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE       #"
+Write-Host "#    IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE     #"
+Write-Host "#                                                                                      #"
+Write-Host "########################################################################################"
+
+$Disc_Text = "MICROSOFT OFFICE 365 NETWORK PERFORMANCE ASSESSMENT`nDATA COLLECTION TOOL`nCopyright© $(Get-Date -Format "yyyy") Microsoft Corporation - All Rights Reserved`n`nTHIS SCRIPT AND ANY RELATED INFORMATION ARE PROVIDED AS IS WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE`n`nClick OK to accept these terms and continue, or Cancel to Exit."
+$Disc_Title = "MICROSOFT OFFICE 365 NETWORK PERFORMANCE ASSESSMENT"
+
+if ($IAcceptScriptTerms) {
+    Write-Host "Disclaimer accepted" -ForegroundColor Green
+    Write-Log -Message "Disclaimer accepted via switch" -Source "Init" -MessageType Info
+} else {
+    $UserAnswer = New-Popup -Title $Disc_Title -Message $Disc_Text -Buttons "OKCancel" -Icon Exclamation -DefaultButton Second
+    Switch ($UserAnswer) {
+        "1" {
+            Write-Host "Disclaimer accepted" -ForegroundColor Green
+            Write-Log -Message "Disclaimer accepted" -Source "Init" -MessageType Info
+        }
+        "2" {
+            Write-Warning "Disclaimer rejected"
+            Write-Log -Message "Disclaimer rejected. Exiting..." -Source "Init" -MessageType Error
+            exit
+        }
+    }
+}
+
+Write-Log -Message "Script Start" -Source "Init" -MessageType Info
+
+if ($RunningAsAdmin -eq $false) {
+    Write-Log -Message "Script is not running as administrator, some tasks will not be possible" -Source "Init" -MessageType Warning
+}
+if ($NPAPathVariableSet) {
+    Write-Log -Message "NPAPath variable was set: '$($env:NPAPath)'" -Source "Init" -MessageType Info
+}
+if ($IPv6Disabled) {
+    Write-Log -Message "IPv6 binding was disabled" -Source "Init" -MessageType Info
+}
+if ($FilesUnblocked) {
+    Write-Log -Message "Files were unblocked" -Source "Init" -MessageType Info
+}
+
+if (-not ((Test-Path $env:NPAPath\Settings.json) -or (Test-Path $env:NPAPath\Settings.xml))) {
+    Write-Log -Message "No previous settings file found, generating a new file" -Source "Init" -MessageType Info
+    New-SettingsFile -version $Version
+} else {
+    if (Test-Path $env:NPAPath\Settings.xml) {
+        Write-Log -Message "A legacy format (xml) of settings file exists, converting to current format (json)" -Source "Init" -MessageType Info
+        $CurrentSettings = Import-Clixml -Path $env:NPAPath\Settings.xml
+        $CurrentSettings | ConvertTo-Json | Out-File -FilePath $env:NPAPath\Settings.json -Encoding UTF8 -Force
+    }
+    if (Test-Path $env:NPAPath\Settings.json) {
+        Write-Log -Message "Importing current settings file" -Source "Init" -MessageType Info
+        $CurrentSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+        if ($CurrentSettings.version -notlike $Version) {
+            Write-Log -Message "Settings file is from an older version, updating settings file schema" -Source "Init" -MessageType Info
+            New-SettingsFile -version $Version
+            $NewSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+            $NewSettings.IsFirstRun = "False"
+            ($NewSettings | Get-Member | Where-Object { ($_.membertype -like "Noteproperty") -and ($_.Name -notmatch "Version|IsFirstRun|CaptureTool|CaptureScenario|DebugMode") }).name | ForEach-Object { $NewSettings.$_ = $CurrentSettings.$_ }
+            if ($CurrentSettings.CaptureTool -notlike "") { $NewSettings.CaptureTool = $CurrentSettings.CaptureTool }
+            if ($CurrentSettings.CaptureScenario -notlike "") { $NewSettings.CaptureScenario = $CurrentSettings.CaptureScenario }
+            if ($CurrentSettings.DebugMode -notlike "") { $NewSettings.DebugMode = $CurrentSettings.DebugMode }
+            $NewSettings | ConvertTo-Json | Out-File -FilePath $env:NPAPath\Settings.json -Encoding UTF8 -Force
+        }
+        if (Test-Path $env:NPAPath\Settings.xml) {
+            Write-Log -Message "Both a legacy (xml) and current format (json) of settings file exists, removing legacy file" -Source "Init" -MessageType Info
+            try {
+                Remove-Item -Path $env:NPAPath\Settings.xml -Force
+            } catch {
+                Write-Log -Message "Failed to remove legacy settings file" -Source "Init" -MessageType Warning
+            }
+        }
+    } else {
+        Write-Log -Message "Unable to find a valid settings file, generating a new file" -Source "Init" -MessageType Info
+        New-SettingsFile -version $Version
+    }
+}
+
+$CurrentSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+if ($PSBoundParameters.ContainsKey("TenantName") -and $CurrentSettings.TenantName -ne $TenantName) {
+	Write-Log -Message "Tenant name specified when calling the script, overriding current value from settings" -Source "Init" -MessageType Info
+    $CurrentSettings.TenantName = $TenantName
+    $CurrentSettings.OneDriveFQDN = $null
+}
+if ($PSBoundParameters.ContainsKey("TenantType") -and ($CurrentSettings.TenantType | Select-Object -Last 1) -ne $TenantType) {
+	Write-Log -Message "Tenant type specified when calling the script, overriding current value from settings" -Source "Init" -MessageType Info
+    switch ($TenantType) {
+        "Worldwide" { $TenantTypeObject = @(0, "Worldwide") }
+        "GCCH" { $TenantTypeObject = @(1, "GCCH") }
+        "DOD" { $TenantTypeObject = @(2, "DOD") }
+    }
+    $CurrentSettings.TenantType = $TenantTypeObject
+} else {
+    if ($CurrentSettings.TenantType -like "") {
+        Write-Log -Message "No tenant type specified, defaulting to worldwide tenant" -Source "Init" -MessageType Info
+        $CurrentSettings.TenantType = @(0, "Worldwide")
+        $TenantType = "Worldwide"
+    } else {
+        $TenantType = $CurrentSettings.TenantType | Select-Object -Last 1
+        Write-Log -Message "No tenant type specified, settings indicate a $TenantType tenant" -Source "Init" -MessageType Info
+    }
+}
+
+switch ($TenantType) {
+
+    "Worldwide" {
+        Write-Log -Message "Fetching endpoints for Worldwide tenants" -Source "Init" -MessageType Info
+        $Endpoints = (Get-Content $env:NPAPath\scripts\endpoints.json | ConvertFrom-Json).Worldwide
+        if ($CurrentSettings.OneDriveFQDN -notlike "") {
+            $Endpoints.Sharepoint = $CurrentSettings.OneDriveFQDN
+            Write-Log -Message "Sharepoint FQDN fetched from settings file '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+        } else {
+            if ($CurrentSettings.TenantName -like "") {
+                $Endpoints.Sharepoint = "microsoft-my." + $Endpoints.Sharepoint
+				Write-Log -Message "No tenant name specified, defaulting to Microsoft tenant '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+			} else {
+                $Endpoints.Sharepoint = $CurrentSettings.TenantName + "-my." + $Endpoints.Sharepoint
+                $CurrentSettings.OneDriveFQDN = $Endpoints.Sharepoint
+                Write-Log -Message "Sharepoint FQDN built using tenant name '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+            }
+			
+        }
+    }
+
+    "GCCH" {
+        Write-Log -Message "Fetching endpoints for GCCH tenants" -Source "Init" -MessageType Info
+        $Endpoints = (Get-Content $env:NPAPath\scripts\endpoints.json | ConvertFrom-Json).GCCH
+        if ($CurrentSettings.OneDriveFQDN -notlike "") {
+            $Endpoints.Sharepoint = $CurrentSettings.OneDriveFQDN
+            Write-Log -Message "Sharepoint FQDN fetched from settings file '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+        } else {
+            if ($CurrentSettings.TenantName -notlike "") {
+                $Endpoints.Sharepoint = $CurrentSettings.TenantName + "-my." + $Endpoints.Sharepoint
+                $CurrentSettings.OneDriveFQDN = $Endpoints.Sharepoint
+                Write-Log -Message "Sharepoint FQDN built using tenant name '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+            } else {
+                Write-Log -Message "TenantName parameter is mandatory for GCCH environment" -Source "Init" -MessageType Error
+                Write-Error "TenantName parameter is mandatory for GCCH environment"
+                exit
+            }
+        }
+    }
+    
+    "DOD" {
+        Write-Log -Message "Fetching endpoints for DOD tenants" -Source "Init" -MessageType Info
+        $Endpoints = (Get-Content $env:NPAPath\scripts\endpoints.json | ConvertFrom-Json).DOD
+        if ($CurrentSettings.OneDriveFQDN -notlike "") {
+            $Endpoints.Sharepoint = $CurrentSettings.OneDriveFQDN
+            Write-Log -Message "Sharepoint FQDN fetched from settings file '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+        } else {
+            if ($CurrentSettings.TenantName -notlike "") {
+                $Endpoints.Sharepoint = $CurrentSettings.TenantName + "-my." + $Endpoints.Sharepoint
+                $CurrentSettings.OneDriveFQDN = $Endpoints.Sharepoint
+                Write-Log -Message "Sharepoint FQDN built using tenant name '$($Endpoints.Sharepoint)'" -Source "Init" -MessageType Info
+            } else {
+                Write-Log -Message "TenantName parameter is mandatory for DOD environment" -Source "Init" -MessageType Error
+                Write-Error "TenantName parameter is mandatory for DOD environment"
+                exit
+            }
+        }
+    }
+}
+
+if ($DebugMode) {$CurrentSettings.DebugMode = "True"} else {$CurrentSettings.DebugMode = "False"}
+
+$CurrentSettings | ConvertTo-Json | Out-File -FilePath $env:NPAPath\Settings.json -Encoding UTF8 -Force
+
+Write-Host "Checking files integrity - " -NoNewline
+Write-Log -Message "Checking files integrity" -Source "Init" -MessageType Info
+### Hash export cmdlet:
+### $ScriptsPath = "xxxx" ; Import-Module "$ScriptsPath\Scripts\DataCollection.psm1" ; Get-ChildItem "$ScriptsPath\Start*","$ScriptsPath\Scripts\*" -Exclude "FileHashes.json","*.exe" | Get-FileContentHash | Select-Object -Property @{Name="Filename";Expression={Split-Path $_.Path -Leaf}},Hash | ConvertTo-Json | Out-File -FilePath "$ScriptsPath\Scripts\FileHashes.json" -Encoding UTF8 -Force
+
+$ExpectedFileHashes = Get-Content "$env:NPAPath\Scripts\FileHashes.json" | ConvertFrom-Json
+$CurrentFileHashes = (Get-ChildItem "$env:NPAPath\Start*","$env:NPAPath\Scripts\*" -Exclude "FileHashes.json","*.exe") | Get-FileContentHash | Select-Object -Property @{Name="Filename";Expression={Split-Path $_.Path -Leaf}},Hash
+$FileIntegrityIssues = @()
+foreach ($ExpectedFileHash in $ExpectedFileHashes) {
+    $CorrespondingHash = $CurrentFileHashes | Where-Object {$_.Filename -eq $ExpectedFileHash.Filename}
+    if ($CorrespondingHash) {
+        if ($CorrespondingHash.Hash -ne $ExpectedFileHash.Hash) {
+            Write-Log -Message "File '$($ExpectedFileHash.Filename)' has been altered" -Source "Init" -MessageType Warning
+            $FileIntegrityIssues += "Warning"
+        }
+    } else {
+        Write-Log -Message "File '$($ExpectedFileHash.Filename)' is missing" -Source "Init" -MessageType Error
+        $FileIntegrityIssues += "Error"
+    }
+}
+if ($FileIntegrityIssues) {
+    if ($FileIntegrityIssues -match "Error") {
+        Write-Host "FAILED" -ForegroundColor Red
+        Write-Warning "Found at least one major file integrity issue`nThis will cause issues"
+        Write-Log -Message "Found at least one major file integrity issue. Exiting..." -Source "Init" -MessageType Error
+
+        exit
+
+    } else {
+        Write-Host "WARNING" -ForegroundColor Yellow
+        Write-Warning "Found at least one file integrity issue"
+        Write-Log -Message "Found at least one file integrity issue" -Source "Init" -MessageType Warning
+    }
+} else {
+    Write-Host "PASSED" -ForegroundColor Green
+    Write-Log -Message "No file integrity issue found" -Source "Init" -MessageType Info
+}
+
+Write-Host "Checking GPO settings for scheduled tasks - " -NoNewline
+Write-Log -Message "Checking GPO settings for scheduled tasks" -Source "Init" -MessageType Info
+$DisableDomainCreds = (Get-ItemProperty -path Registry::HKLM\System\CurrentControlSet\Control\Lsa\ -Name DisableDomainCreds).DisableDomainCreds
+if ($DisableDomainCreds) {
+    Write-Host "WARNING" -ForegroundColor Yellow
+    Write-Warning @"
+Current policy does not allow to save passwords for scheduled tasks
+Tasks will not be able to restart if the machine reboots, the user logs off or the session locks
+"@
+    Write-Log -Message "Current policy does not allow to save passwords for scheduled tasks..." -Source "Init" -MessageType Error
+} else {
+    Write-Host "PASSED" -ForegroundColor Green
+    Write-Log -Message "Current policy allows to save passwords for Scheduled Tasks" -Source "Init" -MessageType Info
+}
+
+if ($SetProxyCredentials) {
+    Write-Log -Message "Explicitly requesting user credentials for proxy as per user request" -Source "Init" -MessageType Info
+    Set-ProxyCredentials (Get-Credential -Message "Please type the credentials to use for proxy authentication")
+}
+Write-Host "Checking proxy configuration - " -NoNewline
+Write-Log -Message "Checking proxy configuration" -Source "Init" -MessageType Info
+Get-ProxyConfiguration -LogType "Init"
+if ($SetProxyConfiguration) {
+    Write-Host "WARNING" -ForegroundColor Yellow
+    Write-Warning "Attempting to set proxy configuration as requested"
+    Set-ProxyConfiguration
+    Write-Host "Checking new proxy configuration - " -NoNewline
+    Write-Log -Message "Checking new proxy configuration" -Source "Init" -MessageType Info
+}
+$ProxyTestResult = Test-Proxy -Uri "https://$($Endpoints.Exchange)/apc/trans.gif"
+if ($ProxyTestResult) {
+    Write-Host "PASSED" -ForegroundColor Green
+} else {
+    Write-Host "FAILED" -ForegroundColor Red
+}
+
+Write-Host "Checking DataCollection version - " -NoNewline
+Write-Log -Message "Checking expected DataCollection version information" -Source "Init" -MessageType Info
+try {
+    $NPAVersionCheck = ((Invoke-WebRequest -Uri 'https://forms.office.com/handlers/ResponsePageStartup.ashx?id=v4j5cvGGr0GRqy180BHbR6wEhZooLZxDgzjnVWKYS0JUMEFTQ0w4QUhNRDRXVzhFOUgzTjFIMFFGRCQlQCN0PWcu' -UserAgent (Get-UserAgent) -UseBasicParsing).Content | ConvertFrom-Json)
+    $ExpectedVersion = (($NPAVersionCheck.data.form.questions | Where-Object {$_.title -eq "NPA versions"}).Choices.DisplayText | Where-Object {$_ -match "DataCollection - "}) -replace '.*? - (.*)','$1'
+    if ($ExpectedVersion -notmatch "\d.\d") { throw "No valid version string fetched" }
+    if ([System.Version]($Version -replace '(\d.\d\.\d).*','$1') -lt [System.Version]$ExpectedVersion) {
+        Write-Log -Message "Using an old version of DataCollection (Current: '$Version' - Expected: '$ExpectedVersion')" -Source "Init" -MessageType Error
+        if ($BypassVersionCheck) {
+            Write-Log -Message "Bypassing version check" -Source "Init" -MessageType Warning
+            Write-Host "WARNING" -ForegroundColor Yellow
+        } else {
+            Write-Host "FAILED" -ForegroundColor Red
+            $Breakflag = $true
+        }
+        Write-Warning "A newer version of the DataCollection tool is available (Current: '$Version' - Expected: '$ExpectedVersion')"
+        $VersionMatch = $false
+    } elseif ([System.Version]($Version -replace '(\d.\d\.\d).*','$1') -eq [System.Version]$ExpectedVersion) {
+        Write-Log -Message "Using the expected version of DataCollection ('$ExpectedVersion')" -Source "Init" -MessageType Info
+        Write-Host "PASSED" -ForegroundColor Green
+        $VersionMatch = $true
+    } else {
+        Write-Log -Message "Using a different version of DataCollection (Current: '$Version' - Expected: '$ExpectedVersion')" -Source "Init" -MessageType Warning
+        Write-Host "PASSED" -ForegroundColor Green
+        $VersionMatch = $false
+    }
+} catch {
+    Write-Log -Message "Failed to check expected DataCollection version information: $($_.Exception.Message)" -Source "Init" -MessageType Error
+    Write-Host "WARNING" -ForegroundColor Yellow
+    Write-Warning "Unable to check for the expected version of the DataCollection tool"
+}
+
+# Only check for known issues if the version is the expected one
+# This is to avoid false "known issues" when the versions don't match
+if ($VersionMatch -eq $true) {
+    Write-Host "Checking DataCollection known issues - " -NoNewline
+    Write-Log -Message "Checking for known issues" -Source "Init" -MessageType Info
+    try {
+        $KnownIssuesCheck = ((Invoke-WebRequest -Uri 'https://forms.office.com/handlers/ResponsePageStartup.ashx?id=v4j5cvGGr0GRqy180BHbR6wEhZooLZxDgzjnVWKYS0JUMEFTQ0w4QUhNRDRXVzhFOUgzTjFIMFFGRCQlQCN0PWcu' -UserAgent (Get-UserAgent) -UseBasicParsing).Content | ConvertFrom-Json)
+        $KnownIssues = (($KnownIssuesCheck.data.form.questions | Where-Object {$_.title -eq "Known issues"}).Choices.DisplayText | Where-Object {$_ -match "DataCollection - "}) -replace '.*? - (.*)','$1'
+        if ($KnownIssues -eq "None") {
+            Write-Log -Message "No known issues found" -Source "Init" -MessageType Info
+            Write-Host "PASSED" -ForegroundColor Green
+        } else {
+            Write-Log -Message "Known issues found" -Source "Init" -MessageType Warning
+            Write-Host "WARNING" -ForegroundColor Yellow
+            foreach ($KnownIssue in ($KnownIssues -split ';')) {
+                Write-Log -Message "Issue: $KnownIssue" -Source "Init" -MessageType Warning
+                Write-Warning "Issue: $KnownIssue"
+            }
+        }
+    } catch {
+        Write-Log -Message "Unable to check for known issues: $($_.Exception.Message)" -Source "Init" -MessageType Error
+        Write-Host "WARNING" -ForegroundColor Yellow
+        Write-Warning "Unable to check for known issues of the DataCollection tool"
+    }
+} else {
+    Write-Log -Message "Not checking for known issues due to version mismatch" -Source "Init" -MessageType Warning
+}
+
+Write-Host "Checking installed capture tools - " -NoNewline
+Write-Log -Message "Checking installed capture tools" -Source "Init" -MessageType Info
+
+Write-Log -Message "Checking Wireshark" -Source "Init" -MessageType Info
+if (Test-Path HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Wireshark) {
+    $WiresharkPath = (Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Wireshark -Name InstallLocation).InstallLocation
+} elseif (Test-Path HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Wireshark) {
+    $WiresharkPath = (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Wireshark -Name InstallLocation).InstallLocation
+} elseif (Test-Path "C:\program files\Wireshark\tshark.exe") {
+    $WiresharkPath = "C:\program files\Wireshark"
+} elseif (Test-Path "C:\Program Files (x86)\Wireshark\tshark.exe") {
+    $WiresharkPath = "C:\Program Files (x86)\Wireshark"
+} else {
+    $WiresharkPath = $null
+}
+
+if ($WiresharkPath -and (Test-Path "$WiresharkPath\wireshark.exe")) {
+    $WiresharkVersion = (Get-Item "$WiresharkPath\wireshark.exe").VersionInfo.ProductVersion
+    Write-Log -Message "Wireshark is installed (version '$WiresharkVersion'), installation path: '$WiresharkPath'" -Source "Init" -MessageType Info
+
+    Write-Log -Message "Checking latest Wireshark version information" -Source "Init" -MessageType Info
+    try {
+        $WiresharkLatestBuildInfo = [xml](Invoke-WebRequest -Uri "https://www.wireshark.org/wireshark-pad.xml" -UserAgent (Get-UserAgent) -UseBasicParsing)
+        $WiresharkLatestVersion = $WiresharkLatestBuildInfo.XML_DIZ_INFO.Program_Info.Program_Version
+        $WiresharkLatestPublishDate = Get-Date "$($WiresharkLatestBuildInfo.XML_DIZ_INFO.Program_Info.Program_Release_Year)-$($WiresharkLatestBuildInfo.XML_DIZ_INFO.Program_Info.Program_Release_Month)-$($WiresharkLatestBuildInfo.XML_DIZ_INFO.Program_Info.Program_Release_Day)" -Format "yyyy-MM-dd"
+        Write-Log -Message "Latest version of Wireshark is '$WiresharkLatestVersion' published on '$WiresharkLatestPublishDate'" -Source "Init" -MessageType Info
+    } catch {
+        Write-Log -Message "Failed to check latest Wireshark version information: $($_.Exception.Message)" -Source "Init" -MessageType Error
+    }
+
+    Write-Log -Message "Configuring Wireshark settings" -Source "Init" -MessageType Info
+    Set-WiresharkSettings
+} else {
+    Write-Log -Message "Wireshark is not installed" -Source "Init" -MessageType Warning
+    $WiresharkPath = $null
+}
+
+Write-Log -Message "Checking Netmon" -Source "Init" -MessageType Info
+if ((Get-ChildItem 'C:\Program Files\' -Recurse *netmon.exe* -Depth 2 -ErrorAction SilentlyContinue).Directory.FullName) {
+    $NetmonPath = (Get-ChildItem 'C:\Program Files\' -Recurse *netmon.exe* -Depth 2 -ErrorAction SilentlyContinue).Directory.FullName
+} elseif ((Get-ChildItem 'C:\Program Files (x86)\' -Recurse *netmon.exe* -Depth 2 -ErrorAction SilentlyContinue).Directory.FullName) {
+    $NetmonPath = (Get-ChildItem 'C:\Program Files (x86)\' -Recurse *netmon.exe* -Depth 2 -ErrorAction SilentlyContinue).Directory.FullName
+} else {
+    $NetmonPath = $null
+}
+
+if ($NetmonPath) {
+    Write-Log -Message "Netmon is installed, installation path: '$NetmonPath'" -Source "Init" -MessageType Info
+} else {
+    Write-Log -Message "Netmon is not installed" -Source "Init" -MessageType Warning
+}
+
+Write-Log -Message "Checking Npcap" -Source "Init" -MessageType Info
+if (Test-Path HKLM:\SYSTEM\CurrentControlSet\Services\npcap\Parameters) {
+    if ((Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\npcap\Parameters).WinPcapCompatible) {
+        Write-Log -Message "Npcap is installed in WinPcap compatibility mode, traceroute over TCP will be possible" -Source "Init" -MessageType Info
+    } else {
+        Write-Log -Message "Npcap is not installed in WinPcap compatibility mode, traceroute over TCP will not be possible" -Source "Init" -MessageType Warning
+        Write-Log -Message "Reinstall Npcap in WinPcap compatibility mode if traceroute over TCP is required" -Source "Init" -MessageType Warning
+        if ($WiresharkPath) {
+            $NpcapInstaller = Get-Item $WiresharkPath\npcap*.exe
+            if ($NpcapInstaller) {
+                if ($RunningAsAdmin) {
+                    Write-Log -Message "Npcap executable was found in Wireshark path, proposing automatic reinstallation" -Source "Init" -MessageType Warning
+                    $ReinstallNpcapAnswer = New-Popup -Title "Npcap reinstallation" -Message "Would you like to reinstall Npcap in Winpcap mode?" -Buttons "YesNo" -Icon Question
+                    if ($ReinstallNpcapAnswer -eq 6) {
+                        Write-Log -Message "User chose to reinstall Npcap in Winpcap mode" -Source "Init" -MessageType Info
+                        $Process = Start-Process $NpcapInstaller.FullName -ArgumentList '/winpcap_mode=enforced /require_features /force' -PassThru
+                        while ($Process.HasExited -ne $true) { Start-Sleep -Seconds 1 }
+                        if ((Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\npcap\Parameters).WinPcapCompatible) {
+                            Write-Log -Message "Npcap has been reinstalled in WinPcap compatibility mode, traceroute over TCP will be possible" -Source "Init" -MessageType Info
+                        } else {
+                            Write-Log -Message "Npcap was not reinstalled in WinPcap compatibility mode, traceroute over TCP will not be possible" -Source "Init" -MessageType Warning
+                        }
+                    } elseif ($ReinstallNpcapAnswer -eq 7) {
+                        Write-Log -Message "User chose not to reinstall Npcap in Winpcap mode" -Source "Init" -MessageType Warning
+                    }
+                } else {
+                    Write-Log -Message "Npcap executable was found in Wireshark path but the script is not running as an administrator, unable to propose automatic reinstallation" -Source "Init" -MessageType Warning
+                }
+            } else {
+                Write-Log -Message "Npcap executable was not found in Wireshark path, unable to propose automatic reinstallation" -Source "Init" -MessageType Warning
+            }
+        } else {
+            Write-Log -Message "Wireshark path not detected, unable to propose automatic reinstallation" -Source "Init" -MessageType Warning
+        }
+    }
+} else {
+    Write-Log -Message "Npcap is not detected, traceroute over TCP will not be possible" -Source "Init" -MessageType Warning
+    Write-Log -Message "Install Npcap in WinPcap compatibility mode if traceroute over TCP is required" -Source "Init" -MessageType Warning
+}
+
+$CurrentSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+$CurrentSettings.WiresharkPath = $WiresharkPath
+$CurrentSettings.NetmonPath = $NetmonPath
+$CurrentSettings | ConvertTo-Json | Out-File -FilePath $env:NPAPath\Settings.json -Encoding UTF8 -Force
+
+if ($WiresharkPath -and (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\npcap\Parameters -ErrorAction SilentlyContinue).WinPcapCompatible -and (Test-Path "$WiresharkPath\editcap.exe") -and (Test-Path "$WiresharkPath\mergecap.exe")) {
+    Write-Host "PASSED" -ForegroundColor Green
+    Write-Log -Message "Wireshark and its components are installed and Npcap is installed in WinPcap compatibility mode, all features will be available" -Source "Init" -MessageType Info
+} elseif (-not $WiresharkPath -and -not $NetmonPath -and $RunningAsAdmin -eq $false) {
+    Write-Host "FAILED" -ForegroundColor Red
+    Write-Warning "No capture tool is installed and the script is not running as administrator, unable to fallback to netsh trace"
+    Write-Log -Message "No capture tool is installed and the script is not running as administrator, unable to fallback to netsh trace" -Source "Init" -MessageType Error
+    $Breakflag = $true
+} else {
+    Write-Host "WARNING" -ForegroundColor Yellow
+    if (-not $WiresharkPath) {
+        Write-Warning @"
+Wireshark is not installed
+Automated network traces validation will not be possible
+Some scenarios might generate larger trace files
+Netskope and Zscaler (encrypted tunnel) capture will not be possible
+"@
+    } else {
+        if (-not (Test-Path "$WiresharkPath\mergecap.exe")) {
+            Write-Warning @"
+mergecap.exe is not detected in Wireshark installation path
+Netskope and Zscaler (encrypted tunnel) capture will not be possible
+"@
+        } else {
+            if (-not (Test-Path "$WiresharkPath\editcap.exe")) {
+                Write-Warning @"
+editcap.exe is not detected in Wireshark installation path
+Netskope capture will not be possible
+"@
+            }
+        }
+    }
+    if (-not (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\npcap\Parameters -ErrorAction SilentlyContinue).WinPcapCompatible) {
+        Write-Warning @"
+Npcap is not installed in WinPcap compatibility mode
+Traceroute over TCP will not be possible
+Reinstall Npcap in WinPcap compatibility mode if traceroute over TCP is required
+"@
+    }
+}
+
+Write-Host "Checking Teams Network Assessment Tool - " -NoNewline
+Write-Log -Message "Checking Teams Network Assessment Tool" -Source "Init" -MessageType Info
+$InstallTeamsNATAnswer = $null
+if (Test-Path "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool\NetworkAssessmentTool.exe") {
+    $TeamsNATpath = "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool"
+} elseif (Test-Path "C:\Program Files\Microsoft Teams Network Assessment Tool\NetworkAssessmentTool.exe") {
+    $TeamsNATpath = "C:\Program Files\Microsoft Teams Network Assessment Tool"
+} else {
+    Write-Log -Message "Teams Network Assessment Tool is not installed, prompting to install" -Source "Init" -MessageType Warning
+    Write-Host "FAILED" -ForegroundColor Red
+    Write-Warning "Teams Network Assessment Tool is not installed"
+    if ($RunningAsAdmin) {
+        $InstallTeamsNATAnswer = New-Popup -Title "Teams Network Assessment Tool installation" -Message "Would you like to install the Teams Network Assessment Tool?" -Buttons "YesNo" -Icon Question
+        if ($InstallTeamsNATAnswer -eq 6) {
+            Write-Log -Message "User chose to install Teams Network Assessment Tool" -Source "Init" -MessageType Info
+        } elseif ($InstallTeamsNATAnswer -eq 7) {
+            Write-Log -Message "User chose not to install Teams Network Assessment Tool" -Source "Init" -MessageType Warning
+        }
+    } else {
+        Write-Log -Message "Teams Network Assessment Tool is not installed and the script is not running as an administrator, unable to install Teams Network Assessment Tool" -Source "Init" -MessageType Warning
+    }
+    $TeamsNATpath = $null
+}
+
+if ($TeamsNATpath) {
+    $TeamsNATVersion = (Get-ItemProperty "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -match "Teams Network Assessment Tool" -and $_.InstallDate -notlike ""}).DisplayVersion
+    if (-not $TeamsNATVersion) {
+        $TeamsNATVersion = (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -match "Teams Network Assessment Tool" -and $_.InstallDate -notlike ""}).DisplayVersion
+    }
+    if ($TeamsNATVersion) {
+        Write-Log -Message "Teams Network Assessment Tool is installed (version '$TeamsNATVersion'), installation path: '$TeamsNATpath'" -Source "Init" -MessageType Info
+    } else {
+        Write-Log -Message "Teams Network Assessment Tool is installed but version information is not available, installation path: '$TeamsNATpath'" -Source "Init" -MessageType Warning
+        $TeamsNATVersion = "0.0"
+    }
+    Write-Log -Message "Checking expected Teams Network Assessment Tool version information" -Source "Init" -MessageType Info
+    try {
+        $NPAVersionCheck = ((Invoke-WebRequest -Uri 'https://forms.office.com/handlers/ResponsePageStartup.ashx?id=v4j5cvGGr0GRqy180BHbR6wEhZooLZxDgzjnVWKYS0JUMEFTQ0w4QUhNRDRXVzhFOUgzTjFIMFFGRCQlQCN0PWcu' -UserAgent (Get-UserAgent) -UseBasicParsing).Content | ConvertFrom-Json)
+        $TeamsNATExpectedVersion = (($NPAVersionCheck.data.form.questions | Where-Object {$_.title -eq "NPA versions"}).Choices.DisplayText | Where-Object {$_ -match "TeamsNAT - "}) -replace '.*? - (.*)','$1'
+        if ($TeamsNATExpectedVersion -notmatch "\d.\d") { throw "No valid version string fetched" }
+        Write-Log -Message "Expected Teams Network Assessment Tool version: '$TeamsNATExpectedVersion'" -Source "Init" -MessageType Info
+        if ([System.Version]$TeamsNATVersion -lt [System.Version]$TeamsNATExpectedVersion) {
+            Write-Log -Message "Teams Network Assessment Tool is not up to date, prompting to update" -Source "Init" -MessageType Warning
+            Write-Host "FAILED" -ForegroundColor Red
+            Write-Warning "A newer version of the Teams Network Assessment Tool is available (current version: $TeamsNATVersion - expected version: $TeamsNATExpectedVersion)"
+            if ($RunningAsAdmin) {
+                $InstallTeamsNATAnswer = New-Popup -Title "Teams Network Assessment Tool update" -Message "Would you like to update the Teams Network Assessment Tool?" -Buttons "YesNo" -Icon Question
+                if ($InstallTeamsNATAnswer -eq 6) {
+                    Write-Log -Message "User chose to update Teams Network Assessment Tool" -Source "Init" -MessageType Info
+                } elseif ($InstallTeamsNATAnswer -eq 7) {
+                    Write-Log -Message "User chose not to update Teams Network Assessment Tool" -Source "Init" -MessageType Warning
+                }
+            } else {
+                Write-Log -Message "Teams Network Assessment Tool is not up to date and the script is not running as an administrator, unable to update Teams Network Assessment Tool" -Source "Init" -MessageType Warning
+            }
+        } elseif ([System.Version]$TeamsNATVersion -eq [System.Version]$TeamsNATExpectedVersion) {
+            Write-Log -Message "Using the expected version of Teams Network Assessment Tool" -Source "Init" -MessageType Info
+            Write-Host "PASSED" -ForegroundColor Green
+        } else {
+            Write-Log -Message "Using a different version of Teams Network Assessment Tool (Current version: '$TeamsNATVersion' - Expected version: '$TeamsNATExpectedVersion')" -Source "Init" -MessageType Warning
+            Write-Host "WARNING" -ForegroundColor Yellow
+            Write-Warning "Using a different version of Teams Network Assessment Tool (Current version: '$TeamsNATVersion' - Expected version: '$TeamsNATExpectedVersion')"
+        }
+    } catch {
+        Write-Log -Message "Failed to check expected Teams Network Assessment Tool version information: $($_.Exception.Message)" -Source "Init" -MessageType Error
+        Write-Host "WARNING" -ForegroundColor Yellow
+        Write-Warning "Failed to check expected Teams Network Assessment Tool version information"
+    }
+}
+
+if ($InstallTeamsNATAnswer -eq 6) {
+
+    Write-Host "Attempting to download Teams Network Assessment Tool - " -NoNewline
+    Write-Log -Message "Starting process to download Teams Network Assessment Tool" -Source "Init" -MessageType Info
+    
+    try {
+        # Additional headers (even empty) are required for a fast response ¯\_(ツ)_/¯
+        $TeamsNATDownloadPage = Invoke-WebRequest "https://aka.ms/TeamsNAT" -UserAgent (Get-UserAgent) -UseBasicParsing -Headers @{"sec-ch-ua"='';"sec-fetch-dest"='';"sec-fetch-mode"='';'accept-language'='';'accept-encoding'='';'accept'='text/html'}
+        $TeamsNATLatestBuildInfo = ($TeamsNATDownloadPage.Content -split "`n" | Select-String '"downloadFile":\[(.*?)\]') -replace '.*"downloadFile":\[(.*?)\].*','$1' | ConvertFrom-Json
+        $TeamsNATLatestVersion = $TeamsNATLatestBuildInfo.version
+        $TeamsNATDownloadLink = $TeamsNATDownloadPage.Links | Where-Object {$_.href -like "*MicrosoftTeamsNetworkAssessmentTool.exe"} | Select-Object -ExpandProperty href
+        
+        Write-Log -Message "Attempting to download Teams Network Assessment Tool version '$TeamsNATLatestVersion' to '$env:NPAPath\Scripts'" -Source "Init" -MessageType Info
+        Invoke-WebRequest $TeamsNATDownloadLink -UserAgent (Get-UserAgent) -UseBasicParsing -OutFile "$env:NPAPath\Scripts\MicrosoftTeamsNetworkAssessmentTool.exe" | Out-Null
+        
+        if (Test-Path "$env:NPAPath\Scripts\MicrosoftTeamsNetworkAssessmentTool.exe") {
+            Write-Log -Message "Teams Network Assessment Tool download successful" -Source "Init" -MessageType Info
+            Write-Host "PASSED" -ForegroundColor Green
+        } else {
+            Write-Log -Message "Teams Network Assessment Tool download failed" -Source "Init" -MessageType Error
+            Write-Host "FAILED" -ForegroundColor Red
+            Write-Warning "Download of Teams Network Assessment Tool failed"
+            Write-Warning "Manually download and install Teams Network Assessment Tool then restart the script: https://aka.ms/TeamsNAT"
+            $Breakflag = $true
+        }
+    } catch {
+        Write-Log -Message "Teams Network Assessment Tool download failed: $($_.Exception.Message)" -Source "Init" -MessageType Error
+        Write-Host "FAILED" -ForegroundColor Red
+        Write-Warning "Download of Teams Network Assessment Tool failed"
+        Write-Warning "Manually download and install Teams Network Assessment Tool then restart the script: https://aka.ms/TeamsNAT"
+        $Breakflag = $true
+    }
+
+    if (Test-Path "$env:NPAPath\Scripts\MicrosoftTeamsNetworkAssessmentTool.exe") {
+
+        Write-Host "Attempting to install Teams Network Assessment Tool - " -NoNewline
+        Write-Log -Message "Attempting to install Teams Network Assessment Tool" -Source "Init" -MessageType Info
+        & "$env:NPAPath\Scripts\MicrosoftTeamsNetworkAssessmentTool.exe" /quiet
+
+        do {
+            Write-Log -Message "Waiting for installation process to end" -Source "Init" -MessageType Info
+            Start-Sleep -Seconds 5
+            if (Test-Path "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool\NetworkAssessmentTool.exe") {
+                $TeamsNATpath = "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool"
+            } elseif (Test-Path "C:\Program Files\Microsoft Teams Network Assessment Tool") {
+                $TeamsNATpath = "C:\Program Files\Microsoft Teams Network Assessment Tool"
+            }
+        } until ($null -eq (Get-Process -Name MicrosoftTeamsNetworkAssessmentTool -ErrorAction SilentlyContinue))
+
+        Write-Log -Message "Installation process ended, checking installation paths" -Source "Init" -MessageType Info
+        if (Test-Path "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool\NetworkAssessmentTool.exe") {
+            $TeamsNATpath = "C:\Program Files (x86)\Microsoft Teams Network Assessment Tool"
+        } elseif (Test-Path "C:\Program Files\Microsoft Teams Network Assessment Tool") {
+            $TeamsNATpath = "C:\Program Files\Microsoft Teams Network Assessment Tool"
+        } else {
+            Write-Log -Message "Teams Network Assessment Tool path not found" -Source "Init" -MessageType Error
+            Write-Host "FAILED" -ForegroundColor Red
+            Write-Warning "Installation of Teams Network Assessment Tool failed"
+            Write-Warning "Manually download and install Teams Network Assessment Tool then restart the script: https://aka.ms/TeamsNAT"
+            $Breakflag = $true
+        }
+
+        if ($TeamsNATpath) {
+            $TeamsNATVersion = (Get-ItemProperty "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -match "Teams Network Assessment Tool" -and $_.InstallDate -notlike ""}).DisplayVersion
+            if (-not $TeamsNATVersion) {
+                $TeamsNATVersion = (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -match "Teams Network Assessment Tool" -and $_.InstallDate -notlike ""}).DisplayVersion
+            }
+            if ($TeamsNATVersion) {
+                Write-Log -Message "Teams Network Assessment Tool is installed (version '$TeamsNATVersion'), installation path: '$TeamsNATpath'" -Source "Init" -MessageType Info
+            } else {
+                Write-Log -Message "Teams Network Assessment Tool is installed but version information is not available, installation path: '$TeamsNATpath'" -Source "Init" -MessageType Warning
+                $TeamsNATVersion = "0.0"
+            }
+            Write-Log -Message "Checking expected Teams Network Assessment Tool version information" -Source "Init" -MessageType Info
+            try {
+                $NPAVersionCheck = ((Invoke-WebRequest -Uri 'https://forms.office.com/handlers/ResponsePageStartup.ashx?id=v4j5cvGGr0GRqy180BHbR6wEhZooLZxDgzjnVWKYS0JUMEFTQ0w4QUhNRDRXVzhFOUgzTjFIMFFGRCQlQCN0PWcu' -UserAgent (Get-UserAgent) -UseBasicParsing).Content | ConvertFrom-Json)
+                $TeamsNATExpectedVersion = (($NPAVersionCheck.data.form.questions | Where-Object {$_.title -eq "NPA versions"}).Choices.DisplayText | Where-Object {$_ -match "TeamsNAT - "}) -replace '.*? - (.*)','$1'
+                if ($TeamsNATExpectedVersion -notmatch "\d.\d") { throw "No valid version string fetched" }
+                Write-Log -Message "Expected Teams Network Assessment Tool version: '$TeamsNATExpectedVersion'" -Source "Init" -MessageType Info
+                if ([System.Version]$TeamsNATVersion -lt [System.Version]$TeamsNATExpectedVersion) {
+                    Write-Log -Message "Using an old version of Teams Network Assessment Tool" -Source "Init" -MessageType Error
+                    Write-Host "FAILED" -ForegroundColor Red
+                    Write-Warning "A newer version of the Teams Network Assessment Tool is available (current version: $TeamsNATVersion - expected version: $TeamsNATExpectedVersion)"
+                    Write-Warning "Manually download and install Teams Network Assessment Tool then restart the script: https://aka.ms/TeamsNAT"
+                    $Breakflag = $true
+                } elseif ([System.Version]$TeamsNATVersion -eq [System.Version]$TeamsNATExpectedVersion) {
+                    Write-Log -Message "Using the expected version of Teams Network Assessment Tool" -Source "Init" -MessageType Info
+                    Write-Host "PASSED" -ForegroundColor Green
+                } else {
+                    Write-Log -Message "Using a different version of Teams Network Assessment Tool (Current version: '$TeamsNATVersion' - Expected version: '$TeamsNATExpectedVersion')" -Source "Init" -MessageType Warning
+                    Write-Host "WARNING" -ForegroundColor Yellow
+                    Write-Warning "Using a different version of Teams Network Assessment Tool (Current version: '$TeamsNATVersion' - Expected version: '$TeamsNATExpectedVersion')"
+                }
+            } catch {
+                Write-Log -Message "Failed to check expected Teams Network Assessment Tool version information: $($_.Exception.Message)" -Source "Init" -MessageType Error
+                Write-Host "WARNING" -ForegroundColor Yellow
+                Write-Warning "Failed to check expected Teams Network Assessment Tool version information"
+            }
+        }
+    
+    }
+
+} elseif ($InstallTeamsNATAnswer -eq 7) {
+    Write-Log -Message "TeamsNAT was not installed" -Source "Init" -MessageType Error
+    Write-Warning "Teams Network Assessment Tool was not downloaded and installed"
+    Write-Warning "Manually download and install Teams Network Assessment Tool then restart the script: https://aka.ms/TeamsNAT"
+    $Breakflag = $true
+}
+
+if ($TeamsNATpath) {
+    $CurrentSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+    $CurrentSettings.TeamsNATpath = $TeamsNATpath
+    $CurrentSettings | ConvertTo-Json | Out-File -FilePath $env:NPAPath\Settings.json -Encoding UTF8 -Force
+}
+
+Write-Host "Checking connectivity to '$($Endpoints.Exchange)' - " -NoNewline
+Write-Log -Message "Checking connectivity to '$($Endpoints.Exchange)'" -Source "Init" -MessageType Info
+try {
+    $EXOConnectivity = Invoke-WebRequest -Uri "https://$($Endpoints.Exchange)/apc/trans.gif" -UserAgent (Get-UserAgent) -UseBasicParsing
+    if ($EXOConnectivity.statuscode -notlike "200") {
+        Write-Host "FAILED" -ForegroundColor Red
+        Write-Warning "Cannot browse to '$($Endpoints.Exchange)'"
+        Write-Log -Message "Failed to connect to '$($Endpoints.Exchange)'" -Source "Init" -MessageType Error
+        Write-Log -Message "$($EXOConnectivity.statuscode) $($EXOConnectivity.StatusDescription)" -Source "Init" -MessageType Error
+        $EXOConnectivity.Headers.Keys | Where-Object { $_ -match "X-(FrontEnd|MachineName|EndPoint|UserHostAddress|Powered-By|MSEdge|ms-ests-server|FirstHopCafeEFZ|FEEFZInfo|FEProxyInfo|BEPartition|CalculatedBETarget)|Proxy|Server" } | Sort-Object | ForEach-Object {
+            Write-Log -Message "$_ = $($EXOConnectivity.Headers[$_])" -Source "Init" -MessageType Error
+        }
+        $Breakflag = $true
+    } else {
+        Write-Host "PASSED" -ForegroundColor Green
+        Write-Log -Message "Successfully connected to '$($Endpoints.Exchange)'" -Source "Init" -MessageType Info
+    }
+} catch {
+    Write-Host "FAILED" -ForegroundColor Red
+    Write-Warning "Cannot browse to '$($Endpoints.Exchange)'"
+    if ($_.Exception.Response.StatusCode -eq "ProxyAuthenticationRequired") {
+        $ProxyCredentialsPath = "$env:NPAPath\ProxyCredentials.xml"
+        if (Test-Path $ProxyCredentialsPath) {
+            $ProxyCredentials = Import-Clixml -Path $ProxyCredentialsPath
+            Write-Log -Message "Proxy credentials provided for user account '$($ProxyCredentials.UserName)' have been rejected by proxy" -Source "Init" -MessageType Warning
+        }
+    }
+    Write-Log -Message "Failed to connect to '$($Endpoints.Exchange)' with exception: $($_.Exception.Message)" -Source "Init" -MessageType Error
+    if ($_.Exception.Response) {
+        $ErrorResponse = $_
+        Write-Log -Message "Known headers in response:" -Source "Init" -MessageType Error
+        $_.Exception.Response.Headers | Where-Object { $_ -match "X-(FrontEnd|MachineName|EndPoint|UserHostAddress|Powered-By|MSEdge|ms-ests-server|FirstHopCafeEFZ|FEEFZInfo|FEProxyInfo|BEPartition|CalculatedBETarget)|Proxy|Server" } | Sort-Object | ForEach-Object {
+            Write-Log -Message "$_ = $($ErrorResponse.Exception.Response.GetResponseHeader($_))" -Source "Init" -MessageType Error
+        }
+    }
+    $Breakflag = $true
+}
+
+Write-Host "Checking connectivity to '$($Endpoints.SharePoint)' - " -NoNewline
+Write-Log -Message "Checking connectivity to '$($Endpoints.SharePoint)'" -Source "Init" -MessageType Info
+try {
+    $SPConnectivity = Invoke-WebRequest -Uri "https://$($Endpoints.SharePoint)" -UserAgent (Get-UserAgent) -UseBasicParsing
+    if ($SPConnectivity.statuscode -notlike "200") {
+        Write-Host "FAILED" -ForegroundColor Red
+        Write-Warning "Cannot browse to '$($Endpoints.SharePoint)'"
+        $Breakflag = $true
+        Write-Log -Message "Failed to connect to '$($Endpoints.SharePoint)'" -Source "Init" -MessageType Error
+        Write-Log -Message "$($SPConnectivity.statuscode) $($SPConnectivity.StatusDescription)" -Source "Init" -MessageType Error
+        $SPConnectivity.Headers.Keys | Where-Object { $_ -match "X-(FrontEnd|MachineName|EndPoint|UserHostAddress|Powered-By|MSEdge|ms-ests-server|FirstHopCafeEFZ|FEEFZInfo|FEProxyInfo|BEPartition|CalculatedBETarget)|Proxy|Server" } | Sort-Object | ForEach-Object {
+            Write-Log -Message "$_ = $($SPConnectivity.Headers[$_])" -Source "Init" -MessageType Error
+        }
+    } else {
+        Write-Host "PASSED" -ForegroundColor Green
+        Write-Log -Message "Successfully connected to '$($Endpoints.SharePoint)'" -Source "Init" -MessageType Info
+    }
+} catch {
+    Write-Host "FAILED" -ForegroundColor Red
+    Write-Warning "Failed to connect to '$($Endpoints.SharePoint)'"
+    if ($_.Exception.Response.StatusCode -eq "ProxyAuthenticationRequired") {
+        $ProxyCredentialsPath = "$env:NPAPath\ProxyCredentials.xml"
+        if (Test-Path $ProxyCredentialsPath) {
+            $ProxyCredentials = Import-Clixml -Path $ProxyCredentialsPath
+            Write-Log -Message "Proxy credentials provided for user account '$($ProxyCredentials.UserName)' have been rejected by proxy" -Source "Init" -MessageType Warning
+        }
+    }
+    Write-Log -Message "Failed to connect to '$($Endpoints.SharePoint)' with exception: $($_.Exception.Message)" -Source "Init" -MessageType Error
+    if ($_.Exception.Response) {
+        $ErrorResponse = $_
+        Write-Log -Message "Known headers in response:" -Source "Init" -MessageType Error
+        $_.Exception.Response.Headers | Where-Object { $_ -match "X-(FrontEnd|MachineName|EndPoint|UserHostAddress|Powered-By|MSEdge|ms-ests-server|FirstHopCafeEFZ|FEEFZInfo|FEProxyInfo|BEPartition|CalculatedBETarget)|Proxy|Server" } | Sort-Object | ForEach-Object {
+            Write-Log -Message "$_ = $($ErrorResponse.Exception.Response.GetResponseHeader($_))" -Source "Init" -MessageType Error
+        }
+    }
+    $Breakflag = $true
+}
+
+if (-not (Get-ScheduledTaskInfo -TaskName "NPA - Trace" -ErrorAction SilentlyContinue)) {
+    Remove-Item -Path "$env:NPAPath\lock.lck" -Force -ErrorAction SilentlyContinue
+}
+
+if ($BypassPrereqChecks) {
+    Write-Warning "Bypassing prerequisites checks and opening interface anyway"
+    Write-Log -Message "Bypassing prerequisites checks and opening interface anyway" -Source "Init" -MessageType Warning
+    $Breakflag = $null
+}
+
+if ($Breakflag) {
+    Write-Error "Prerequisites not met. Please remediate all listed items and restart script"
+    Write-Log -Message "Prerequisites not met. Exiting..." -Source "Init" -MessageType Error
+
+    exit
+
+} else {
+
+    if ($KnownIssues -notlike "" -and $KnownIssues -ne "None") {
+        Write-Log -Message "Displaying popup warning for known issues" -Source "Init" -MessageType Warning
+        $WarningTitle = "Known issues found"
+        $WarningText = "Current known issues:`r`n"
+        foreach ($KnownIssue in ($KnownIssues -split ';')) {
+            $WarningText += "- $KnownIssue`r`n"
+        }
+        New-Popup -Title $WarningTitle -Message $WarningText -Buttons OK -Icon Exclamation | Out-Null
+        Write-Log -Message "Known issues acknowledged" -Source "Init" -MessageType Info
+    }
+
+    # Add components to bring window to front
+    try {[SFW] | Out-Null} catch {
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class SFW {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
+        }
+"@}
+
+    $InstanceRunningInCurrentProcess = Get-Runspace | Where-Object {$_.Name -match "DataCollection_Interface"}
+    $InstanceRunningInOtherProcess = Get-Process -Name Powershell -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowTitle -eq "Microsoft Office 365 - Network Performance Assessment Tool"}
+    if ($InstanceRunningInCurrentProcess) {
+        Write-Error "Another instance of the tool is already running in the current Powershell session (PID:$PID)"
+        Write-Log -Message "Another instance of the tool is already running in the current Powershell session (PID:$PID)" -Source "Init" -MessageType Info
+        [SFW]::SetForegroundWindow((Get-Process -Id $PID).MainWindowHandle) | Out-Null
+    } elseif ($InstanceRunningInOtherProcess) {
+        Write-Error "Another instance of the tool is already running in another Powershell session (PID:$($InstanceRunningInOtherProcess.Id))"
+        Write-Log -Message "Another instance of the tool is already running in another Powershell session (PID:$($InstanceRunningInOtherProcess.Id))" -Source "Init" -MessageType Info
+        [SFW]::SetForegroundWindow($InstanceRunningInOtherProcess.MainWindowHandle) | Out-Null
+    } else {
+        Write-Host "Initializing interface"
+        Write-Log -Message "Starting interface initialization" -Source "Init" -MessageType Info
+        $CurrentSettings = Get-Content $env:NPAPath\Settings.json | ConvertFrom-Json
+        $DebugMode = if ($CurrentSettings.DebugMode -match "True") {$true} else {$false}
+        $WindowStyle = if ($DebugMode) { "Normal" } else { "Hidden" }
+        $Command = "& `'$env:NPAPath\Scripts\LoadDialog.ps1`'"
+        $InterfaceProcess = Start-Process powershell -ArgumentList $Command -WindowStyle $WindowStyle -PassThru
+        Start-Sleep -Seconds 1
+        [SFW]::SetForegroundWindow((Get-Process -Id $InterfaceProcess.Id).MainWindowHandle) | Out-Null
+    }
+}
